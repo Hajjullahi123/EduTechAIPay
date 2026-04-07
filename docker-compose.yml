@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  edutech-suite:
+    build: .
+    container_name: edutech_pro_suite
+    ports:
+      - "3001:3001"
+    volumes:
+      - edutech_data:/app/server/db
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=file:/app/server/db/edutech.db
+    restart: always
+
+volumes:
+  edutech_data:

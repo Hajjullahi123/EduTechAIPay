@@ -1,0 +1,1103 @@
+const express = require('express');
+const router = express.Router();
+const prisma = require('../db');
+const { authenticate, authorize } = require('../middleware/auth');
+const { sendPaymentConfirmation } = require('../services/emailService');
+const { logAction } = require('../utils/audit');
+const { getStudentFeeSummary, calculatePreviousOutstanding, createOrUpdateFeeRecordWithOpening } = require('../utils/feeCalculations');
+
+// Get all students with fee status (Accountant/Admin)
+router.get('/students', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const { termId, academicSessionId, classId } = req.query;
+
+    const where = { schoolId: req.schoolId, status: 'active' };
+    if (classId) where.classId = parseInt(classId);
+
+    const students = await prisma.student.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true
+          }
+        },
+        classModel: true,
+        feeRecords: {
+          where: {
+            ...(termId && { termId: parseInt(termId) }),
+            ...(academicSessionId && { academicSessionId: parseInt(academicSessionId) })
+          }
+        }
+      },
+      orderBy: { admissionNumber: 'asc' }
+    });
+
+    // Fetch fee structures to populate expected amounts for students without records
+    const feeStructures = await prisma.classFeeStructure.findMany({
+      where: {
+        schoolId: req.schoolId,
+        termId: parseInt(termId),
+        academicSessionId: parseInt(academicSessionId)
+      }
+    });
+
+    const structureMap = {};
+    feeStructures.forEach(fs => {
+      structureMap[fs.classId] = fs.amount;
+    });
+
+    // Populate missing records with virtual data for display
+    // IMPORTANT: We also calculate previous outstanding for everyone to show true arrears
+    const processedStudents = await Promise.all(students.map(async (student) => {
+      // If student has records, we use the first one (most recent for this term)
+      if (student.feeRecords && student.feeRecords.length > 0) {
+        return student;
+      }
+
+      // No record for current term, calculate virtual data
+      const expected = student.isScholarship ? 0 : (structureMap[student.classId] || 0);
+      const arrears = await calculatePreviousOutstanding(
+        req.schoolId,
+        student.id,
+        parseInt(academicSessionId),
+        parseInt(termId)
+      );
+
+      // We attach a virtual record so frontend displays correct 'Expected', 'Arrears' and 'Balance'
+      student.feeRecords = [{
+        id: null,
+        studentId: student.id,
+        termId: parseInt(termId),
+        academicSessionId: parseInt(academicSessionId),
+        openingBalance: arrears,
+        expectedAmount: expected,
+        paidAmount: 0,
+        balance: arrears + expected,
+        isClearedForExam: (expected === 0 && arrears <= 0)
+      }];
+
+      return student;
+    }));
+
+    res.json(processedStudents);
+  } catch (error) {
+    console.error('Error fetching students with fees:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get fee record for a specific student
+router.get('/student/:studentId', authenticate, async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+    const { termId, academicSessionId } = req.query;
+
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term ID and Academic Session ID are required' });
+    }
+
+    const feeRecord = await prisma.feeRecord.findUnique({
+      where: {
+        schoolId_studentId_termId_academicSessionId: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      },
+      include: {
+        student: {
+          include: {
+            user: true,
+            classModel: true
+          }
+        },
+        clearedByUser: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    });
+
+    res.json(feeRecord);
+  } catch (error) {
+    console.error('Error fetching fee record:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get comprehensive fee summary with opening balance
+router.get('/student/:studentId/summary', authenticate, async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+    const { termId, academicSessionId } = req.query;
+
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term ID and Academic Session ID are required' });
+    }
+
+    // Get comprehensive summary
+    const summary = await getStudentFeeSummary(
+      req.schoolId,
+      studentId,
+      parseInt(academicSessionId),
+      parseInt(termId)
+    );
+
+    if (!summary) {
+      return res.status(404).json({ error: 'Unable to fetch fee summary' });
+    }
+
+    // Get student details
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        user: { select: { firstName: true, lastName: true } },
+        classModel: true
+      }
+    });
+
+    res.json({
+      student,
+      ...summary
+    });
+  } catch (error) {
+    console.error('Error fetching fee summary:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create or update fee record (Accountant/Admin)
+router.post('/record', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const {
+      studentId,
+      termId,
+      academicSessionId,
+      expectedAmount,
+      paidAmount
+    } = req.body;
+
+    if (!studentId || !termId || !academicSessionId || expectedAmount === undefined) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Check if student details
+    const student = await prisma.student.findUnique({
+      where: { id: parseInt(studentId) },
+      select: { isScholarship: true, classId: true }
+    });
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Fetch school fee structure for this class/term
+    if (!student.isScholarship) {
+      const feeStructure = await prisma.classFeeStructure.findFirst({
+        where: {
+          classId: student.classId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId),
+          schoolId: req.schoolId
+        }
+      });
+      const maxAllowed = feeStructure?.amount || 0;
+      if (parseFloat(expectedAmount) > maxAllowed) {
+        return res.status(400).json({
+          error: `Charge amount (₦${parseFloat(expectedAmount).toLocaleString()}) cannot exceed the standard school fee for this class (₦${maxAllowed.toLocaleString()})`
+        });
+      }
+    }
+
+    // Use centralized utility
+    const feeRecord = await createOrUpdateFeeRecordWithOpening({
+      schoolId: req.schoolId,
+      studentId: parseInt(studentId),
+      termId: parseInt(termId),
+      academicSessionId: parseInt(academicSessionId),
+      expectedAmount: student.isScholarship ? 0 : parseFloat(expectedAmount),
+      paidAmount: paidAmount !== undefined ? parseFloat(paidAmount) : undefined
+    });
+
+    res.json({
+      message: 'Fee record saved successfully',
+      feeRecord,
+      ...(student.isScholarship && {
+        warning: 'This student is on scholarship. Fee amount has been automatically set to ₦0.'
+      })
+    });
+
+    // Log the action (we can detect if it was an update via the result)
+    logAction({
+      schoolId: req.schoolId,
+      userId: req.user.id,
+      action: 'UPDATE_RECORD',
+      resource: 'FEE_RECORD',
+      details: {
+        studentId: parseInt(studentId),
+        termId: parseInt(termId),
+        academicSessionId: parseInt(academicSessionId),
+        expectedAmount,
+        paidAmount
+      },
+      ipAddress: req.ip
+    });
+  } catch (error) {
+    console.error('Error creating/updating fee record:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Record payment (Accountant/Admin)
+router.post('/payment', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const { studentId, termId, academicSessionId, amount, paymentMethod, reference, notes } = req.body;
+
+    if (!studentId || !termId || !academicSessionId || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    // Get existing fee record with student, parent, term, and session info
+    const feeRecord = await prisma.feeRecord.findUnique({
+      where: {
+        schoolId_studentId_termId_academicSessionId: {
+          schoolId: req.schoolId,
+          studentId: parseInt(studentId),
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      },
+      include: {
+        student: {
+          include: {
+            user: true,
+            parent: {
+              include: {
+                user: true
+              }
+            },
+            classModel: true
+          }
+        },
+        term: true,
+        academicSession: true
+      }
+    });
+
+    if (!feeRecord) {
+      return res.status(404).json({ error: 'Fee record not found. Please create a fee record first.' });
+    }
+
+    const paymentAmountNum = parseFloat(amount);
+    if (isNaN(paymentAmountNum) || paymentAmountNum <= 0) {
+      return res.status(400).json({ error: 'A valid positive payment amount is required' });
+    }
+    if (paymentAmountNum > feeRecord.balance) {
+      return res.status(400).json({
+        error: `Payment amount (₦${paymentAmountNum.toLocaleString()}) cannot exceed the total outstanding balance (₦${feeRecord.balance.toLocaleString()})`
+      });
+    }
+
+    // Use transaction to update fee record and create payment history
+    const result = await prisma.$transaction(async (tx) => {
+      // Re-fetch record inside transaction to get latest balance
+      const currentRecord = await tx.feeRecord.findUnique({
+        where: { id: feeRecord.id }
+      }); 
+
+      if (!currentRecord) throw new Error('Fee record not found');
+
+      const updatedPaidAmount = currentRecord.paidAmount + paymentAmountNum;
+      const updatedBalance = (currentRecord.openingBalance + currentRecord.expectedAmount) - updatedPaidAmount;
+
+      if (updatedBalance < -0.01) { // Allow for tiny floating point noise
+        throw new Error(`Payment would result in a negative balance (₦${updatedBalance.toLocaleString()})`);
+      }
+
+      // Update fee record
+      const updated = await tx.feeRecord.update({
+        where: { id: feeRecord.id },
+        data: {
+          paidAmount: updatedPaidAmount,
+          balance: updatedBalance,
+          isClearedForExam: (updatedBalance <= 0)
+        },
+        include: {
+          student: {
+            include: {
+              user: true,
+              parent: {
+                include: {
+                  user: true
+                }
+              },
+              classModel: true
+            }
+          },
+          term: true,
+          academicSession: true
+        }
+      });
+
+      // Create payment history record
+      const payment = await tx.feePayment.create({
+        data: {
+          schoolId: req.schoolId,
+          feeRecordId: feeRecord.id,
+          amount: parseFloat(amount),
+          paymentMethod: paymentMethod || 'cash',
+          reference: reference || null,
+          notes: notes || null,
+          recordedBy: req.user.id,
+          paymentDate: new Date()
+        }
+      });
+
+      return { feeRecord: updated, payment };
+    });
+
+    // Send payment confirmation email to parent (non-blocking)
+    if (result.feeRecord.student.parent?.user?.email) {
+      const emailData = {
+        parentEmail: result.feeRecord.student.parent.user.email,
+        studentName: result.feeRecord.student.middleName ? `${result.feeRecord.student.user.firstName} ${result.feeRecord.student.user.lastName} ${result.feeRecord.student.middleName}` : `${result.feeRecord.student.user.firstName} ${result.feeRecord.student.user.lastName}`,
+        amount: parseFloat(amount),
+        paymentMethod: paymentMethod || 'Cash',
+        date: new Date(),
+        receiptNumber: result.payment.id,
+        balance: result.feeRecord.balance,
+        termName: result.feeRecord.term?.name || 'Current Term',
+        sessionName: result.feeRecord.academicSession?.name || 'Current Session',
+        schoolName: process.env.SCHOOL_NAME || 'School Management System',
+        className: result.feeRecord.student.classModel?.name || 'N/A'
+      };
+
+      // Send email asynchronously (don't await to avoid blocking)
+      sendPaymentConfirmation(emailData).catch(e => console.error('Payment email error:', e));
+    }
+
+    // NEW: Send SMS confirmation (non-blocking)
+    if (result.feeRecord.student.parent?.phoneNumber) {
+      const { sendPaymentSMS } = require('../services/smsService');
+      const settings = await prisma.school.findUnique({
+        where: { id: req.schoolId }
+      });
+      const schoolName = settings?.name || settings?.schoolName || process.env.SCHOOL_NAME || 'School Management System';
+
+      sendPaymentSMS({
+        phone: result.feeRecord.student.parent.phoneNumber,
+        studentName: result.feeRecord.student.middleName ? `${result.feeRecord.student.user.firstName} ${result.feeRecord.student.user.lastName} ${result.feeRecord.student.middleName}` : `${result.feeRecord.student.user.firstName} ${result.feeRecord.student.user.lastName}`,
+        amount: parseFloat(amount),
+        balance: result.feeRecord.balance,
+        schoolName
+      }).catch(e => console.error('Payment SMS error:', e));
+    }
+
+    res.json({
+      message: 'Payment recorded successfully',
+      feeRecord: result.feeRecord,
+      payment: result.payment,
+      emailSent: !!result.feeRecord.student.parent?.user?.email
+    });
+
+    // Log the payment
+    logAction({
+      schoolId: req.schoolId,
+      userId: req.user.id,
+      action: 'CREATE',
+      resource: 'FEE_PAYMENT',
+      details: {
+        paymentId: result.payment.id,
+        feeRecordId: result.feeRecord.id,
+        studentId: parseInt(studentId),
+        amount,
+        paymentMethod,
+        reference
+      },
+      ipAddress: req.ip
+    });
+  } catch (error) {
+    console.error('Error recording payment:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Edit payment (Accountant/Admin)
+router.put('/payment/:paymentId', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const paymentId = parseInt(req.params.paymentId);
+    const { amount, paymentMethod, reference, notes } = req.body;
+
+    if (!amount) {
+      return res.status(400).json({ error: 'Amount is required' });
+    }
+
+    // Get existing payment
+    const payment = await prisma.feePayment.findFirst({
+      where: {
+        id: paymentId,
+        schoolId: req.schoolId
+      },
+      include: {
+        feeRecord: true
+      }
+    });
+
+    if (!payment) {
+      return res.status(404).json({ error: 'Payment not found' });
+    }
+
+    // Calculate difference
+    const oldAmount = payment.amount;
+    const newAmount = parseFloat(amount);
+
+    if (isNaN(newAmount) || newAmount < 0) {
+      return res.status(400).json({ error: 'Valid payment amount is required' });
+    }
+
+    const difference = newAmount - oldAmount;
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Re-fetch everything inside transaction with lock
+      const currentPayment = await tx.feePayment.findUnique({
+        where: { id: paymentId },
+        include: { feeRecord: true }
+      });
+
+      if (!currentPayment || currentPayment.schoolId !== req.schoolId) {
+        throw new Error('Payment record not found or access denied');
+      }
+
+      const feeRecord = await tx.feeRecord.findUnique({
+        where: { id: currentPayment.feeRecordId }
+      });
+
+      const updatedPaidAmount = (feeRecord.paidAmount - currentPayment.amount) + newAmount;
+      const updatedBalance = (feeRecord.openingBalance + feeRecord.expectedAmount) - updatedPaidAmount;
+
+      if (updatedPaidAmount < 0) {
+        throw new Error(`Invalid change. Total paid amount cannot be negative.`);
+      }
+
+      if (updatedBalance < -0.01) {
+        throw new Error(`Updated payment amount would exceed the total budget. Balance: ₦${updatedBalance.toLocaleString()}`);
+      }
+
+      const updatedFeeRecord = await tx.feeRecord.update({
+        where: { id: feeRecord.id },
+        data: {
+          paidAmount: updatedPaidAmount,
+          balance: updatedBalance,
+          isClearedForExam: (updatedBalance <= 0)
+        },
+        include: {
+          student: {
+            include: {
+              user: true
+            }
+          }
+        }
+      });
+
+      // Update payment record
+      const updatedPayment = await tx.feePayment.update({
+        where: {
+          id: paymentId,
+          schoolId: req.schoolId
+        },
+        data: {
+          amount: newAmount,
+          paymentMethod: paymentMethod || payment.paymentMethod,
+          reference: reference || payment.reference,
+          notes: notes || payment.notes
+        }
+      });
+
+      return { feeRecord: updatedFeeRecord, payment: updatedPayment };
+    });
+
+    res.json({
+      message: 'Payment updated successfully',
+      feeRecord: result.feeRecord,
+      payment: result.payment
+    });
+
+    // Log the update
+    logAction({
+      schoolId: req.schoolId,
+      userId: req.user.id,
+      action: 'UPDATE',
+      resource: 'FEE_PAYMENT',
+      details: {
+        paymentId,
+        oldAmount,
+        newAmount,
+        difference
+      },
+      ipAddress: req.ip
+    });
+
+  } catch (error) {
+    console.error('Error updating payment:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get payment history for a student
+router.get('/payments/:studentId', authenticate, authorize(['admin', 'principal', 'accountant', 'student']), async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+    const { termId, academicSessionId } = req.query;
+
+    if (req.user.role === 'student') {
+      // Find the student record associated with this user
+      const student = await prisma.student.findFirst({
+        where: {
+          userId: req.user.id,
+          schoolId: req.schoolId
+        }
+      });
+
+      if (!student || student.id !== studentId) {
+        return res.status(403).json({ error: 'You are not authorized to view this payment history.' });
+      }
+    }
+
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term ID and Academic Session ID are required' });
+    }
+
+    // Get fee record
+    const feeRecord = await prisma.feeRecord.findUnique({
+      where: {
+        schoolId_studentId_termId_academicSessionId: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      }
+    });
+
+    if (!feeRecord) {
+      return res.json([]); // Return empty array if no fee record exists
+    }
+
+    // Get payment history
+    const payments = await prisma.feePayment.findMany({
+      where: {
+        feeRecordId: feeRecord.id,
+        schoolId: req.schoolId
+      },
+      include: {
+        recordedByUser: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      },
+      orderBy: {
+        paymentDate: 'desc'
+      }
+    });
+
+    res.json(payments);
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// Consolidate clearance logic into a single toggle for easier management
+router.post('/toggle-clearance/:studentId', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+    const { termId, academicSessionId } = req.body;
+
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term ID and Academic Session ID are required' });
+    }
+
+    // Get fee record
+    let feeRecord = await prisma.feeRecord.findUnique({
+      where: {
+        schoolId_studentId_termId_academicSessionId: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      }
+    });
+
+    let updatedStatus;
+    if (!feeRecord) {
+      // If no fee record exists, we create one.
+      // The toggle implies changing from a default state.
+      // If the system default is 'allowed' (true), then toggling it when it doesn't exist means we are setting it to 'restricted' (false).
+      // Find class fee structure to get expected amount
+      const student = await prisma.student.findUnique({
+        where: { id: studentId },
+        select: { classId: true, isScholarship: true }
+      });
+
+      if (!student) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      const feeStructure = await prisma.classFeeStructure.findFirst({
+        where: {
+          classId: student.classId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      });
+
+      // Scholarship students get 0 fees
+      const expectedAmount = student.isScholarship ? 0 : (feeStructure?.amount || 0);
+
+      feeRecord = await prisma.feeRecord.create({
+        data: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId),
+          expectedAmount,
+          paidAmount: 0,
+          balance: expectedAmount,
+          isClearedForExam: false // Toggled from default allowed (true) to restricted (false)
+        }
+      });
+      updatedStatus = false; // Since we just created it as restricted
+    } else {
+      updatedStatus = !feeRecord.isClearedForExam;
+      await prisma.feeRecord.update({
+        where: { id: feeRecord.id },
+        data: {
+          isClearedForExam: updatedStatus,
+          clearedBy: updatedStatus ? req.user.id : null,
+          clearedAt: updatedStatus ? new Date() : null
+        }
+      });
+    }
+
+    res.json({
+      message: `Student exam access ${updatedStatus ? 'allowed' : 'restricted'}`,
+      isClearedForExam: updatedStatus
+    });
+
+    logAction({
+      schoolId: req.schoolId,
+      userId: req.user.id,
+      action: 'UPDATE',
+      resource: 'FEE_CLEARANCE',
+      details: {
+        studentId,
+        termId: parseInt(termId),
+        status: updatedStatus ? 'ALLOWED' : 'RESTRICTED'
+      },
+      ipAddress: req.ip
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Consolidated clearance logic into toggle-clearance above. 
+// Clear/Revoke routes have been simplified below for compatibility.
+
+router.post('/clear/:studentId', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+    const { termId, academicSessionId } = req.body;
+    // Use updateMany to handle missing record gracefully or upsert would be better but we need student class info
+    // For simplicity, we check if exists, then update or create
+    const record = await prisma.feeRecord.findUnique({
+      where: {
+        schoolId_studentId_termId_academicSessionId: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      }
+    });
+
+    if (record) {
+      await prisma.feeRecord.update({
+        where: { id: record.id },
+        data: { isClearedForExam: true, clearedBy: req.user.id, clearedAt: new Date() }
+      });
+    } else {
+      const student = await prisma.student.findUnique({
+        where: { id: studentId },
+        select: { classId: true, isScholarship: true }
+      });
+      if (!student) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+      const feeStructure = await prisma.classFeeStructure.findFirst({
+        where: { classId: student?.classId, termId: parseInt(termId), academicSessionId: parseInt(academicSessionId) }
+      });
+
+      // Scholarship students get 0 fees
+      const expectedAmount = student.isScholarship ? 0 : (feeStructure?.amount || 0);
+
+      await prisma.feeRecord.create({
+        data: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId),
+          expectedAmount,
+          paidAmount: 0,
+          balance: expectedAmount,
+          isClearedForExam: true,
+          clearedBy: req.user.id,
+          clearedAt: new Date()
+        }
+      });
+    }
+    res.json({ message: 'Exam access allowed' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/revoke-clearance/:studentId', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const studentId = parseInt(req.params.studentId);
+    const { termId, academicSessionId } = req.body;
+    // Use updateMany for simplicity if record exists
+    const record = await prisma.feeRecord.findUnique({
+      where: {
+        schoolId_studentId_termId_academicSessionId: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId)
+        }
+      }
+    });
+
+    if (record) {
+      await prisma.feeRecord.update({
+        where: { id: record.id },
+        data: { isClearedForExam: false, clearedBy: null, clearedAt: null }
+      });
+    } else {
+      // If no record exists, we create one to store the restriction.
+      const student = await prisma.student.findUnique({
+        where: { id: studentId },
+        select: { classId: true, isScholarship: true }
+      });
+      if (!student) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+      const feeStructure = await prisma.classFeeStructure.findFirst({
+        where: { classId: student?.classId, termId: parseInt(termId), academicSessionId: parseInt(academicSessionId) }
+      });
+
+      // Scholarship students get 0 fees
+      const expectedAmount = student.isScholarship ? 0 : (feeStructure?.amount || 0);
+
+      await prisma.feeRecord.create({
+        data: {
+          schoolId: req.schoolId,
+          studentId,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId),
+          expectedAmount,
+          paidAmount: 0,
+          balance: expectedAmount,
+          isClearedForExam: false
+        }
+      });
+    }
+    res.json({ message: 'Exam access restricted' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Get fee summary/statistics (Accountant/Admin)
+router.get('/summary', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const { termId, academicSessionId } = req.query;
+
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term ID and Academic Session ID are required' });
+    }
+
+    const schoolIdInt = parseInt(req.schoolId);
+    const tId = parseInt(termId);
+    const sId = parseInt(academicSessionId);
+
+    // 1. Get all active students
+    const students = await prisma.student.findMany({
+      where: { schoolId: schoolIdInt, status: 'active' },
+      include: {
+        feeRecords: {
+          where: { termId: tId, academicSessionId: sId }
+        }
+      }
+    });
+
+    // 2. Get fee structures for this term/session
+    const feeStructures = await prisma.classFeeStructure.findMany({
+      where: { schoolId: schoolIdInt, termId: tId, academicSessionId: sId }
+    });
+
+    const structureMap = {};
+    feeStructures.forEach(fs => {
+      structureMap[fs.classId] = fs.amount;
+    });
+
+    // 3. Aggregate data across all students (Real + Virtual)
+    let totalStudents = students.length;
+    let totalExpected = 0;
+    let totalPaid = 0;
+    let totalBalance = 0;
+    let clearedStudents = 0;
+    let restrictedStudents = 0;
+    let fullyPaid = 0;
+    let partiallyPaid = 0;
+    let notPaid = 0;
+
+    for (const student of students) {
+      let record = student.feeRecords[0];
+      let expected = 0;
+      let paid = 0;
+      let balance = 0;
+      let isCleared = false;
+
+      if (record) {
+        // Use existing database record
+        expected = record.expectedAmount;
+        paid = record.paidAmount;
+        balance = record.balance;
+        isCleared = record.isClearedForExam;
+      } else {
+        // Calculate virtual record
+        const arrears = await calculatePreviousOutstanding(schoolIdInt, student.id, sId, tId);
+        const classExpected = student.isScholarship ? 0 : (structureMap[student.classId] || 0);
+
+        expected = classExpected;
+        paid = 0;
+        balance = arrears + classExpected;
+        isCleared = (classExpected === 0 && arrears <= 0);
+      }
+
+      // Aggregate
+      totalExpected += expected;
+      totalPaid += paid;
+      totalBalance += balance;
+      if (isCleared) clearedStudents++;
+      else restrictedStudents++;
+
+      if (balance <= 0) fullyPaid++;
+      else if (paid > 0) partiallyPaid++;
+      else notPaid++;
+    }
+
+    const summary = {
+      totalStudents,
+      totalExpected,
+      totalPaid,
+      totalBalance,
+      clearedStudents,
+      restrictedStudents, // Fixed: ensure this uses the calculated count
+      fullyPaid,
+      partiallyPaid,
+      notPaid
+    };
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Error fetching fee summary:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bulk send fee reminders
+router.post('/bulk-reminder', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const { termId, academicSessionId, classId } = req.body;
+
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term and Session are required' });
+    }
+
+    const where = {
+      schoolId: req.schoolId,
+      termId: parseInt(termId),
+      academicSessionId: parseInt(academicSessionId),
+      balance: { gt: 0 }
+    };
+
+    if (classId) {
+      where.student = { classId: parseInt(classId) };
+    }
+
+    const debtors = await prisma.feeRecord.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            user: { select: { firstName: true, lastName: true } },
+            parent: { include: { user: { select: { email: true } } } },
+            classModel: { select: { name: true, arm: true } }
+          }
+        },
+        term: { select: { name: true } },
+        academicSession: { select: { name: true } }
+      }
+    });
+
+    if (debtors.length === 0) {
+      return res.json({ message: 'No students found with outstanding balances', sentCount: 0 });
+    }
+
+    const { sendFeeReminder } = require('../services/emailService');
+    const settings = await prisma.school.findUnique({
+      where: { id: req.schoolId }
+    });
+    const schoolName = settings?.name || settings?.schoolName || process.env.SCHOOL_NAME || 'School Management System';
+
+    let sentCount = 0;
+    for (const record of debtors) {
+      if (record.student.parent?.user?.email) {
+        const reminderData = {
+          parentEmail: record.student.parent.user.email,
+          studentName: `${record.student.user.firstName} ${record.student.user.lastName}`,
+          balance: record.balance,
+          termName: record.term.name,
+          sessionName: record.academicSession.name,
+          className: `${record.student.classModel?.name} ${record.student.classModel?.arm || ''}`.trim(),
+          schoolName
+        };
+
+        // Send asynchronously
+        sendFeeReminder(reminderData).catch(e => console.error(`Reminder failed for ${record.student.id}:`, e));
+        sentCount++;
+      }
+    }
+
+    res.json({
+      message: `Reminders are being sent to ${sentCount} parents`,
+      sentCount
+    });
+  } catch (error) {
+    console.error('Bulk reminder error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Sync missing fee records for all active students (Admin/Accountant)
+router.post('/sync-records', authenticate, authorize(['admin', 'principal', 'accountant']), async (req, res) => {
+  try {
+    const { termId, academicSessionId } = req.body;
+    if (!termId || !academicSessionId) {
+      return res.status(400).json({ error: 'Term and Session are required for sync' });
+    }
+
+    const schoolIdInt = parseInt(req.schoolId);
+
+    // 1. Get all active students in the school
+    const students = await prisma.student.findMany({
+      where: { schoolId: schoolIdInt, status: 'active' }
+    });
+
+    // 2. Get all fee structures for this school/term/session
+    const feeStructures = await prisma.classFeeStructure.findMany({
+      where: {
+        schoolId: schoolIdInt,
+        termId: parseInt(termId),
+        academicSessionId: parseInt(academicSessionId)
+      }
+    });
+
+    const structureMap = {};
+    feeStructures.forEach(fs => {
+      structureMap[fs.classId] = fs.amount;
+    });
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    let noStructureCount = 0;
+
+    // 3. For each student, check if record exists, if not create/update it
+    for (const student of students) {
+      try {
+        const amount = structureMap[student.classId];
+        if (amount === undefined) {
+          noStructureCount++;
+        }
+
+        const stAmount = student.isScholarship ? 0 : (amount || 0);
+
+        // Check if record exists just to track counts
+        const existing = await prisma.feeRecord.findUnique({
+          where: {
+            schoolId_studentId_termId_academicSessionId: {
+              schoolId: schoolIdInt,
+              studentId: student.id,
+              termId: parseInt(termId),
+              academicSessionId: parseInt(academicSessionId)
+            }
+          }
+        });
+
+        // Use the utility function to handle opening balances correctly
+        // This function will create if missing, or update if existing
+        await createOrUpdateFeeRecordWithOpening({
+          schoolId: schoolIdInt,
+          studentId: student.id,
+          termId: parseInt(termId),
+          academicSessionId: parseInt(academicSessionId),
+          expectedAmount: stAmount,
+          paidAmount: existing ? existing.paidAmount : 0
+        });
+
+        if (!existing) {
+          createdCount++;
+        } else {
+          updatedCount++;
+        }
+      } catch (err) {
+        console.error(`Failed to sync student ${student.id}:`, err);
+        skippedCount++;
+      }
+    }
+
+    const result = {
+      message: `Sync completed: ${createdCount} created, ${updatedCount} updated. ${noStructureCount > 0 ? `Notice: ${noStructureCount} students have no fee structure defined for their class.` : ''}`,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      noStructureCount
+    };
+
+    res.json(result);
+
+    logAction({
+      schoolId: schoolIdInt,
+      userId: req.user.id,
+      action: 'SYNC_FEE_RECORDS',
+      resource: 'FEE_MANAGEMENT',
+      details: { termId, academicSessionId, ...result },
+      ipAddress: req.ip
+    });
+
+  } catch (error) {
+    console.error('Sync fee records error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+module.exports = router;
