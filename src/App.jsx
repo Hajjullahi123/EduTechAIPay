@@ -236,25 +236,31 @@ const AddStudentModal = ({ isOpen, onClose, onComplete }) => {
     );
 }
 
-const AdminSetup = () => {
+const AdminSetup = ({ schoolId }) => {
     const [classes, setClasses] = useState([]);
     const [fees, setFees] = useState([]);
+    const [sessions, setSessions] = useState([]);
     const [newClassName, setNewClassName] = useState('');
     const [newClassArm, setNewClassArm] = useState('');
+    const [newSessionName, setNewSessionName] = useState('');
+    const [newTermName, setNewTermName] = useState('');
     const [loading, setLoading] = useState(false);
     const [refresh, setRefresh] = useState(0);
+    const { user } = useAuth();
 
     useEffect(() => {
         const load = async () => {
-            const [cRes, fRes] = await Promise.all([
-                apiFetch(`${API_BASE}/payment/classes`),
-                apiFetch(`${API_BASE}/payment/fee-structures?termId=1&academicSessionId=1`)
+            const [cRes, fRes, sRes] = await Promise.all([
+                apiFetch(`${API_BASE}/payment/classes`, {}, schoolId),
+                apiFetch(`${API_BASE}/payment/fee-structures?termId=1&academicSessionId=1`, {}, schoolId),
+                apiFetch(`${API_BASE}/super-admin/academic-periods?schoolId=${schoolId}`)
             ]);
             setClasses(await cRes.json());
             setFees(await fRes.json());
+            setSessions(await sRes.json());
         };
         load();
-    }, [refresh]);
+    }, [refresh, schoolId]);
 
     const handleAddClass = async (e) => {
         e.preventDefault();
@@ -263,7 +269,7 @@ const AdminSetup = () => {
             await apiFetch(`${API_BASE}/payment/classes`, {
                 method: 'POST',
                 body: JSON.stringify({ name: newClassName, arm: newClassArm })
-            });
+            }, schoolId);
             setNewClassName(''); setNewClassArm('');
             setRefresh(r => r + 1);
         } catch (err) { alert(err.message); }
@@ -275,6 +281,48 @@ const AdminSetup = () => {
             await apiFetch(`${API_BASE}/payment/fee-structures`, {
                 method: 'POST',
                 body: JSON.stringify({ classId, amount, termId: 1, academicSessionId: 1 })
+            }, schoolId);
+            setRefresh(r => r + 1);
+        } catch (err) { alert(err.message); }
+    };
+
+    const handleAddSession = async (e) => {
+        e.preventDefault();
+        try {
+            await apiFetch(`${API_BASE}/super-admin/academic-periods/sessions`, {
+                method: 'POST',
+                body: JSON.stringify({ schoolId, name: newSessionName })
+            });
+            setNewSessionName('');
+            setRefresh(r => r + 1);
+        } catch (err) { alert(err.message); }
+    };
+
+    const handleActivateSession = async (id) => {
+        try {
+            await apiFetch(`${API_BASE}/super-admin/academic-periods/sessions/${id}/activate`, {
+                method: 'PATCH',
+                body: JSON.stringify({ schoolId })
+            });
+            setRefresh(r => r + 1);
+        } catch (err) { alert(err.message); }
+    };
+
+    const handleAddTerm = async (sessionId, name) => {
+        try {
+            await apiFetch(`${API_BASE}/super-admin/academic-periods/terms`, {
+                method: 'POST',
+                body: JSON.stringify({ schoolId, sessionId, name })
+            });
+            setRefresh(r => r + 1);
+        } catch (err) { alert(err.message); }
+    };
+
+    const handleActivateTerm = async (id, sessionId) => {
+        try {
+            await apiFetch(`${API_BASE}/super-admin/academic-periods/terms/${id}/activate`, {
+                method: 'PATCH',
+                body: JSON.stringify({ schoolId, sessionId })
             });
             setRefresh(r => r + 1);
         } catch (err) { alert(err.message); }
@@ -327,6 +375,48 @@ const AdminSetup = () => {
                         })}
                     </div>
                 </div>
+                {user?.role === 'SUPER_ADMIN' && (
+                    <div className="bg-white sophisticated-shadow border-slate-200 shadow-sm p-8 space-y-6 lg:col-span-2">
+                        <h3 className="font-bold flex items-center gap-2 border-b border-white/5 pb-4 text-purple-400"><ActivityIcon size={18} /> Academic Periods (Sessions & Terms)</h3>
+                        <form onSubmit={handleAddSession} className="flex gap-4">
+                            <input required placeholder="New Session e.g. 2024/2025" value={newSessionName} onChange={e => setNewSessionName(e.target.value)} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 focus:outline-none focus:border-primary-500/50" />
+                            <button type="submit" className="px-6 py-2 bg-purple-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-purple-500/20 whitespace-nowrap">Add Session</button>
+                        </form>
+                        <div className="space-y-6 mt-6">
+                            {sessions.map(session => (
+                                <div key={session.id} className="p-6 bg-slate-50 rounded-[28px] border border-slate-100">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <h4 className="text-lg font-black">{session.name}</h4>
+                                            {session.isCurrent && <span className="px-3 py-1 bg-emerald-500/10 text-emerald-600 text-[10px] font-black uppercase rounded-full border border-emerald-500/20">Active Session</span>}
+                                        </div>
+                                        {!session.isCurrent && <button onClick={() => handleActivateSession(session.id)} className="text-[10px] font-black uppercase text-slate-400 hover:text-emerald-500">Activate</button>}
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {(session.terms || []).map(term => (
+                                            <div key={term.id} className={`p-4 rounded-2xl border ${term.isCurrent ? 'bg-white border-emerald-200 shadow-sm' : 'bg-slate-100 border-transparent'} flex items-center justify-between`}>
+                                                <div>
+                                                    <p className="text-xs font-bold text-slate-900">{term.name}</p>
+                                                    {term.isCurrent && <p className="text-[8px] font-black text-emerald-500 uppercase mt-1 tracking-widest">Active Term</p>}
+                                                </div>
+                                                {!term.isCurrent && <button onClick={() => handleActivateTerm(term.id, session.id)} className="text-[9px] font-black text-slate-400 hover:text-emerald-500">SET ACTIVE</button>}
+                                            </div>
+                                        ))}
+                                        <button 
+                                            onClick={() => {
+                                                const name = prompt('Enter Term Name (e.g. 1st Term)');
+                                                if (name) handleAddTerm(session.id, name);
+                                            }}
+                                            className="p-4 rounded-2xl border border-dashed border-slate-300 text-slate-400 text-xs font-bold hover:bg-white hover:border-purple-300 hover:text-purple-500 transition-all"
+                                        >
+                                            + Add Term
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -701,19 +791,24 @@ const Sidebar = () => {
     const { user, logout } = useAuth();
 
     const menuItems = [
-        { name: 'Analytics', icon: LayoutDashboard, path: '/', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Global Control', icon: ShieldCheck, path: '/super-admin', roles: ['SUPER_ADMIN'] },
-        { name: 'Verify Document', icon: ShieldCheck, path: '/verify', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
-        { name: 'Messaging Hub', icon: MessageSquare, path: '/communication', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Security Vault', icon: ShieldCheck, path: '/security', roles: ['SUPER_ADMIN'] },
+        // Students & Fees (Primary)
         { name: 'Student Records', icon: Users, path: '/students', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Upload Students', icon: Download, path: '/bulk-upload', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Misc. Payments', icon: CreditCard, path: '/misc-fees', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Scholarships', icon: GraduationCap, path: '/scholarships', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+        
+        // Staff and Payroll
         { name: 'Staff Management', icon: Users, path: '/staff', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Employee Payroll', icon: CreditCard, path: '/payroll', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
-        { name: 'Alerts Library', icon: MessageSquare, path: '/comms-hub', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+        
+        // Management 
+        { name: 'Analytics', icon: LayoutDashboard, path: '/', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+        { name: 'Admin Setup', icon: SettingsIcon, path: '/admin-setup', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+        { name: 'Global Control', icon: ShieldCheck, path: '/super-admin', roles: ['SUPER_ADMIN'] },
+        { name: 'Verify Document', icon: ShieldCheck, path: '/verify', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
+        { name: 'Messaging Hub', icon: MessageSquare, path: '/communication', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Activity History', icon: ActivityIcon, path: '/audit-logs', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
+        { name: 'Security Vault', icon: ShieldCheck, path: '/security', roles: ['SUPER_ADMIN'] },
     ];
 
     const visibleItems = menuItems.filter(item => user && item.roles.includes(user.role));
@@ -722,52 +817,38 @@ const Sidebar = () => {
     const displayRole = user?.role === 'SUPER_ADMIN' ? 'Super Admin' : user?.role === 'SCHOOL_ADMIN' ? 'School Admin' : user?.role || 'User';
 
     return (
-        <aside className="w-64 border-r border-slate-200 flex flex-col glass-navbar z-30 sophisticated-shadow relative">
-            <div className="p-10">
-                <div className="cursor-pointer group" onClick={() => navigate('/')}>
-                    <EduTechLogo size={42} className="group-hover:scale-105 transition-transform duration-500" />
+        <aside className="w-64 flex flex-col z-30 relative bg-[#184a2c] text-white">
+            <div className="p-6 border-b border-[#22633a]">
+                <div className="cursor-pointer group text-center" onClick={() => navigate('/')}>
+                    <h2 className="font-bold text-lg leading-tight uppercase tracking-wider text-green-50">Amana Academy Model School</h2>
+                    <p className="text-xs text-green-200 mt-1 italic">Knowledge is Light</p>
                 </div>
             </div>
 
-            <nav className="flex-1 py-8 px-4 flex flex-col space-y-2 overflow-y-auto custom-scrollbar">
-                <div className="px-6 mb-6 text-[10px] font-black text-slate-600 uppercase tracking-widest">Management</div>
+            <nav className="flex-1 py-4 flex flex-col overflow-y-auto custom-scrollbar">
                 {visibleItems.map((item) => (
                     <button
                         key={item.name}
                         onClick={() => navigate(item.path)}
-                        className={`w-full flex items-center justify-start gap-4 px-6 py-4 text-sm font-bold rounded-2xl transition-all group relative overflow-hidden ${
+                        className={`w-full flex items-center justify-start gap-4 px-6 py-4 text-sm font-medium transition-all ${
                             location.pathname === item.path 
-                            ? 'text-slate-900 bg-slate-100 shadow-sm border border-slate-200' 
-                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                            ? 'bg-[#22633a] text-white border-l-4 border-white' 
+                            : 'text-green-100 hover:bg-[#22633a] hover:text-white border-l-4 border-transparent'
                         }`}
                     >
-                        {location.pathname === item.path && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-8 bg-slate-900 rounded-r-full shadow-[0_0_10px_rgba(0,0,0,0.1)]"></div>
-                        )}
-                        <item.icon size={20} className={location.pathname === item.path ? 'text-slate-900' : 'group-hover:scale-110 transition-transform text-slate-400 group-hover:text-slate-600'} />
+                        <item.icon size={18} className={location.pathname === item.path ? 'text-white' : 'text-green-300'} />
                         {item.name}
                     </button>
                 ))}
             </nav>
 
-            <div className="p-8">
-                <div className="p-5 rounded-3xl bg-white sophisticated-shadow border-slate-200 shadow-sm bg-slate-50/40 shadow-xl">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="w-12 h-12 rounded-2xl bg-slate-100 p-0.5 ring-2 ring-primary-500/20">
-                             <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0ea5e9&color=ffffff&bold=true&length=1`} alt="avatar" className="w-full h-full rounded-[14px] object-cover" />
-                        </div>
-                        <div className="overflow-hidden">
-                            <p className="text-sm font-black truncate text-slate-900">{displayName}</p>
-                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">{displayRole}</p>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={() => { logout(); navigate('/login'); }}
-                        className="w-full flex items-center justify-center gap-2 py-3 text-xs text-rose-500 border border-rose-500/20 rounded-xl hover:bg-rose-500 hover:text-white transition-all font-black uppercase tracking-widest shadow-lg shadow-rose-950/20"
-                    >
-                        <LogOut size={16} /> Logout
-                    </button>
-                </div>
+            <div className="p-4 bg-[#113821] border-t border-[#22633a]">
+                <button 
+                    onClick={() => { logout(); navigate('/login'); }}
+                    className="w-full flex items-center justify-start gap-4 px-6 py-3 text-sm text-green-100 hover:text-white transition-all rounded hover:bg-[#22633a]"
+                >
+                    <LogOut size={18} /> Logout
+                </button>
             </div>
         </aside>
     )
@@ -775,6 +856,19 @@ const Sidebar = () => {
 
 const Navbar = ({ schoolId, onSchoolChange }) => {
     const { user } = useAuth();
+    const [period, setPeriod] = useState({ session: '...', term: '...' });
+
+    useEffect(() => {
+        if (!schoolId) return;
+        fetch(`${API_BASE}/super-admin/academic-periods?schoolId=${schoolId}`)
+            .then(res => res.json())
+            .then(data => {
+                const s = data.find(s => s.isCurrent);
+                const t = s?.terms.find(t => t.isCurrent);
+                setPeriod({ session: s?.name || 'N/A', term: t?.name || 'N/A' });
+            });
+    }, [schoolId]);
+
     return (
         <nav className="h-20 px-10 flex items-center justify-between glass-navbar z-20">
             <div className="flex-1 max-w-2xl flex items-center gap-4">
@@ -789,7 +883,7 @@ const Navbar = ({ schoolId, onSchoolChange }) => {
             <div className="flex items-center gap-6 ml-6">
                 <div className="flex flex-col items-end">
                     <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1 font-['Outfit']">Active Financial Window</p>
-                    <p className="text-xs font-black text-gold px-3 py-1 bg-gold/5 border border-gold/10 rounded-lg tracking-tighter uppercase font-['Outfit']">2023/2024 • SECOND TERM</p>
+                    <p className="text-[11px] font-black text-primary-600 px-3 py-1 bg-primary-500/5 border border-primary-500/10 rounded-lg tracking-tighter uppercase font-['Outfit']">{period.session} • {period.term}</p>
                 </div>
             </div>
         </nav>
@@ -1028,6 +1122,11 @@ const App = () => {
                                             <Route path="/scholarships" element={<Scholarships schoolId={schoolId} />} />
                                             <Route path="/staff" element={<StaffManagement schoolId={schoolId} />} />
                                             <Route path="/payroll" element={<PayrollConsole schoolId={schoolId} />} />
+                                            <Route path="/admin-setup" element={
+                                                <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
+                                                    <AdminSetup schoolId={schoolId} />
+                                                </ProtectedRoute>
+                                            } />
                                             <Route path="/comms-hub" element={<CommunicationHub schoolId={schoolId} />} />
                                             <Route path="/audit-logs" element={<AuditLogs schoolId={schoolId} />} />
                                             <Route path="*" element={<Navigate to="/" />} />

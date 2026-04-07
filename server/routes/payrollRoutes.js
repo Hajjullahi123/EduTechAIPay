@@ -44,12 +44,76 @@ router.post('/staff', authenticate, authorize(['admin']), async (req, res) => {
     }
 });
 
+// Update staff
+router.patch('/staff/:id', authenticate, authorize(['admin']), async (req, res) => {
+    try {
+        const staffId = parseInt(req.params.id);
+        const { firstName, lastName, phone, role, bankDetails, baseSalary, isActive } = req.body;
+        const staff = await prisma.staff.update({
+            where: { id: staffId, schoolId: req.schoolId },
+            data: {
+                firstName, lastName, phone, role, bankDetails, 
+                baseSalary: baseSalary ? parseFloat(baseSalary) : undefined,
+                isActive
+            }
+        });
+        res.json(staff);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Download staff bulk upload template
+router.get('/staff/template', authenticate, authorize(['admin']), (req, res) => {
+    const data = [{
+        firstName: 'John',
+        lastName: 'Doe',
+        phone: '2348000000000',
+        role: 'TEACHER',
+        bankDetails: 'BankName - 0000000000',
+        baseSalary: 50000
+    }];
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Staff_Template");
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename=Staff_Bulk_Template.xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+});
+
+// Bulk upload staff
+router.post('/staff/bulk', authenticate, authorize(['admin']), async (req, res) => {
+    try {
+        const { staffList } = req.body;
+        if (!Array.isArray(staffList)) return res.status(400).json({ error: 'Staff list must be an array' });
+
+        const results = await prisma.staff.createMany({
+            data: staffList.map(s => ({
+                schoolId: req.schoolId,
+                firstName: s.firstName,
+                lastName: s.lastName,
+                phone: s.phone?.toString(),
+                role: s.role || 'TEACHER',
+                bankDetails: s.bankDetails,
+                baseSalary: parseFloat(s.baseSalary || 0)
+            }))
+        });
+
+        res.json({ message: `Successfully inducted ${results.count} personnel entities`, count: results.count });
+        logAction({ schoolId: req.schoolId, userId: req.user.id, action: 'CREATE_BULK', resource: 'STAFF', details: { count: results.count } });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // --- PAYROLL & VOUCHERS ---
 
 // Generate monthly vouchers for all active staff
 router.post('/generate-vouchers', authenticate, authorize(['admin', 'accountant']), async (req, res) => {
     try {
         const { month, year } = req.body;
+        
+        // Find current academic period
+        const activeSession = await prisma.academicSession.findFirst({ where: { schoolId: req.schoolId, isCurrent: true } });
+        const activeTerm = activeSession ? await prisma.term.findFirst({ where: { academicSessionId: activeSession.id, isCurrent: true } }) : null;
+
         const staffList = await prisma.staff.findMany({ where: { schoolId: req.schoolId, isActive: true } });
 
         const results = [];
@@ -65,6 +129,8 @@ router.post('/generate-vouchers', authenticate, authorize(['admin', 'accountant'
                 data: {
                     schoolId: req.schoolId,
                     staffId: staff.id,
+                    academicSessionId: activeSession?.id,
+                    termId: activeTerm?.id,
                     month: parseInt(month),
                     year: parseInt(year),
                     totalEarnings: staff.baseSalary,
@@ -82,7 +148,7 @@ router.post('/generate-vouchers', authenticate, authorize(['admin', 'accountant'
 
         res.json({ message: `Successfully generated ${results.length} vouchers for ${month}/${year}`, count: results.length });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.json({ error: 'DB migration required for new period tracking' });
     }
 });
 

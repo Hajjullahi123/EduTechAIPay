@@ -11,14 +11,16 @@ const PayrollConsole = ({ schoolId }) => {
     const [loading, setLoading] = useState(true);
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
+    const [activePeriod, setActivePeriod] = useState({ session: '...', term: '...' });
     
     const [viewMode, setViewMode] = useState('list'); // 'list' or 'analytics'
     const [showDeductionModal, setShowDeductionModal] = useState(false);
+    const [showAllowanceModal, setShowAllowanceModal] = useState(false);
     const [showVoucherModal, setShowVoucherModal] = useState(false);
     const [showCardModal, setShowCardModal] = useState(false);
     const [selectedVoucher, setSelectedVoucher] = useState(null);
     const [selectedStaff, setSelectedStaff] = useState(null);
-    const [deductionData, setDeductionData] = useState({ name: 'Defaulting Deduction', amount: '', explanation: '' });
+    const [itemData, setItemData] = useState({ name: '', amount: '', explanation: '' });
 
     const fetchVouchers = () => {
         setLoading(true);
@@ -30,7 +32,16 @@ const PayrollConsole = ({ schoolId }) => {
             });
     };
 
-    useEffect(() => fetchVouchers(), [month, year, schoolId]);
+    useEffect(() => {
+        fetchVouchers();
+        fetch(`${API_BASE}/super-admin/academic-periods?schoolId=${schoolId}`)
+            .then(res => res.json())
+            .then(data => {
+                const s = data.find(s => s.isCurrent);
+                const t = s?.terms.find(t => t.isCurrent);
+                setActivePeriod({ session: s?.name || 'N/A', term: t?.name || 'N/A' });
+            });
+    }, [month, year, schoolId]);
 
     const handleGenerate = async () => {
         try {
@@ -62,16 +73,17 @@ const PayrollConsole = ({ schoolId }) => {
         window.open(`${API_BASE}/payroll/export?month=${month}&year=${year}&token=${token}&schoolId=${schoolId || ''}`, '_blank');
     };
 
-    const handleAddDeduction = async (e) => {
+    const handleAddItem = async (e, type) => {
         e.preventDefault();
         try {
             const res = await fetch(`${API_BASE}/payroll/vouchers/${selectedVoucher.id}/item`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-school-id': schoolId },
-                body: JSON.stringify({ ...deductionData, type: 'DEDUCTION' })
+                body: JSON.stringify({ ...itemData, type })
             });
             if (res.ok) {
                 setShowDeductionModal(false);
+                setShowAllowanceModal(false);
                 fetchVouchers();
             }
         } catch (err) { alert(err.message); }
@@ -82,10 +94,10 @@ const PayrollConsole = ({ schoolId }) => {
             <header className="flex items-center justify-between">
                 <div>
                     <div className="flex items-center gap-3 text-xs font-black text-rose-500 uppercase tracking-[4px] mb-2">
-                        <History size={14} /> Fiscal Disbursement Protocol
+                        <History size={14} /> Fiscal Disbursement Protocol • {activePeriod.session}
                     </div>
                     <h1 className="text-4xl font-black text-slate-900 tracking-tight leading-none">Payroll Console</h1>
-                    <p className="text-slate-500 font-medium mt-3">Monthly disbursement schedule and default mitigation ledger</p>
+                    <p className="text-slate-500 font-medium mt-3 uppercase text-[10px] tracking-widest border-l-2 border-emerald-500 pl-3">Active Focus: {new Date(0, month-1).toLocaleString('en', { month: 'long' })} {year}</p>
                 </div>
                 <div className="flex gap-4">
                     <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
@@ -98,21 +110,20 @@ const PayrollConsole = ({ schoolId }) => {
                     </div>
 
                     <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
-                        <select className="bg-transparent text-xs font-black uppercase tracking-widest px-4 py-2 outline-none" value={month} onChange={e => setMonth(e.target.value)}>
+                        <select className="bg-transparent text-xs font-black uppercase tracking-widest px-4 py-2 outline-none" value={month} onChange={e => setMonth(parseInt(e.target.value))}>
                             {Array.from({ length: 12 }, (_, i) => <option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('en', { month: 'long' })}</option>)}
                         </select>
-                        <select className="bg-transparent text-xs font-black uppercase tracking-widest px-4 py-2 outline-none border-l border-slate-200" value={year} onChange={e => setYear(e.target.value)}>
-                            <option value="2026">FY 2026</option>
-                            <option value="2025">FY 2025</option>
+                        <select className="bg-transparent text-xs font-black uppercase tracking-widest px-4 py-2 outline-none border-l border-slate-200" value={year} onChange={e => setYear(parseInt(e.target.value))}>
+                            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>FY {y}</option>)}
                         </select>
                     </div>
 
                     <button onClick={handleExport} className="px-6 py-4 bg-white border border-slate-200 rounded-2xl font-black uppercase text-[11px] tracking-[2px] hover:bg-slate-50 text-slate-900 transition-all shadow-sm flex items-center gap-2">
-                        <Download size={18} /> Export Master Excel
+                        <Download size={18} /> Master Excel
                     </button>
 
                     <button onClick={handleGenerate} className="px-8 py-4 bg-slate-900 border border-slate-800 rounded-2xl font-black uppercase text-[11px] tracking-[2px] hover:bg-slate-800 text-white transition-all shadow-xl shadow-slate-900/10 flex items-center gap-2">
-                        <Plus size={18} /> Generate Protocol
+                        <Plus size={18} /> Execute Protocol
                     </button>
                 </div>
             </header>
@@ -165,18 +176,28 @@ const PayrollConsole = ({ schoolId }) => {
                                         </div>
                                     </td>
                                     <td className="px-8 py-7">
-                                        <p className="text-xs font-bold text-slate-600">₦{v.totalEarnings.toLocaleString()}</p>
+                                        <div className="flex flex-col gap-1.5">
+                                            <p className="text-xs font-black text-slate-900">₦{v.totalEarnings.toLocaleString()}</p>
+                                            {v.items.filter(i => i.type === 'ADDITION' && i.name !== 'Basic Salary').map(i => (
+                                                <p key={i.id} className="text-[9px] text-emerald-500 font-bold uppercase tracking-tight flex items-center gap-1">
+                                                    + {i.name}: ₦{i.amount.toLocaleString()}
+                                                </p>
+                                            ))}
+                                            {v.status === 'PENDING' && (
+                                                <button onClick={() => { setSelectedVoucher(v); setItemData({ name: '', amount: '', explanation: '' }); setShowAllowanceModal(true); }} className="text-[9px] font-black text-emerald-600 uppercase tracking-[2px] mt-2 hover:underline">+ Add Allowance</button>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-8 py-7">
                                         <div className="flex flex-col gap-1.5">
                                             <p className={`text-xs font-black font-['Outfit'] ${v.totalDeductions > 0 ? 'text-rose-500' : 'text-slate-300'}`}>- ₦{v.totalDeductions.toLocaleString()}</p>
                                             {v.items.filter(i => i.type === 'DEDUCTION').map(i => (
-                                                <p key={i.id} className="text-[9px] text-slate-400 font-bold uppercase tracking-tight flex items-center gap-1">
-                                                    <AlertCircle size={10} className="text-rose-400" /> {i.explanation || i.name}
+                                                <p key={i.id} className="text-[9px] text-rose-500 font-bold uppercase tracking-tight flex items-center gap-1">
+                                                    <AlertCircle size={10} className="text-rose-400" /> {i.name}: ₦{i.amount.toLocaleString()}
                                                 </p>
                                             ))}
                                             {v.status === 'PENDING' && (
-                                                <button onClick={() => { setSelectedVoucher(v); setShowDeductionModal(true); }} className="text-[9px] font-black text-rose-500 uppercase tracking-[2px] mt-2 hover:underline">Add Defaulting Charge</button>
+                                                <button onClick={() => { setSelectedVoucher(v); setItemData({ name: '', amount: '', explanation: '' }); setShowDeductionModal(true); }} className="text-[9px] font-black text-rose-500 uppercase tracking-[2px] mt-2 hover:underline">- Add Deduction</button>
                                             )}
                                         </div>
                                     </td>
@@ -217,32 +238,32 @@ const PayrollConsole = ({ schoolId }) => {
                 </div>
             )}
 
-            {showDeductionModal && (
+            {(showDeductionModal || showAllowanceModal) && (
                 <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xl z-50 flex items-center justify-center p-6 animate-in fade-in duration-300">
                     <div className="glass-card w-full max-w-lg p-12 sophisticated-shadow bg-white animate-in zoom-in-95 duration-400 shadow-2xl relative">
-                        <button onClick={() => setShowDeductionModal(false)} className="absolute right-8 top-8 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-400 hover:text-slate-900 transition-all shadow-sm">
+                        <button onClick={() => { setShowDeductionModal(false); setShowAllowanceModal(false); }} className="absolute right-8 top-8 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-400 hover:text-slate-900 transition-all shadow-sm">
                             <X size={20} />
                         </button>
                         <div className="mb-10">
-                            <h3 className="text-3xl font-black text-rose-500 mb-2">Default Protocol</h3>
-                            <p className="text-slate-500 text-sm font-medium">Add a fiscal deduction with mandatory justification</p>
+                            <h3 className={`text-3xl font-black ${showAllowanceModal ? 'text-emerald-500' : 'text-rose-500'} mb-2`}>{showAllowanceModal ? 'Allowance Protocol' : 'Deduction Protocol'}</h3>
+                            <p className="text-slate-500 text-sm font-medium">Record a fiscal adjustment with mandatory justification</p>
                         </div>
-                        <form className="space-y-6" onSubmit={handleAddDeduction}>
+                        <form className="space-y-6" onSubmit={(e) => handleAddItem(e, showAllowanceModal ? 'ADDITION' : 'DEDUCTION')}>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Charge Identity</label>
-                                <input required className="input-field" value={deductionData.name} placeholder="e.g. Lateness, Asset Damage" onChange={e => setDeductionData({...deductionData, name: e.target.value})} />
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adjustment Identity</label>
+                                <input required className="input-field" value={itemData.name} placeholder="e.g. Overtime Bonus, Asset Damage" onChange={e => setItemData({...itemData, name: e.target.value})} />
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Monetary Scale (₦)</label>
-                                <input required type="number" className="input-field font-['Outfit']" placeholder="500" onChange={e => setDeductionData({...deductionData, amount: e.target.value})} />
+                                <input required type="number" className="input-field font-['Outfit']" placeholder="5000" value={itemData.amount} onChange={e => setItemData({...itemData, amount: e.target.value})} />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Default Justification (Explanation)</label>
-                                <textarea required className="input-field h-32 py-4 resize-none" placeholder="Reasoning for the deduction as it will appear on the voucher..." onChange={e => setDeductionData({...deductionData, explanation: e.target.value})}></textarea>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Justification (Explanation)</label>
+                                <textarea required className="input-field h-32 py-4 resize-none" placeholder="Detailed reasoning..." value={itemData.explanation} onChange={e => setItemData({...itemData, explanation: e.target.value})}></textarea>
                             </div>
                             <div className="flex gap-4 pt-4">
-                                <button type="button" onClick={() => setShowDeductionModal(false)} className="flex-1 px-8 py-4 bg-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Abort</button>
-                                <button type="submit" className="flex-1 px-8 py-4 bg-rose-600 rounded-2xl font-black uppercase text-xs tracking-widest text-white hover:bg-rose-500 transition-all shadow-2xl shadow-rose-950/20">Apply Deduction</button>
+                                <button type="button" onClick={() => { setShowDeductionModal(false); setShowAllowanceModal(false); }} className="flex-1 px-8 py-4 bg-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Abort</button>
+                                <button type="submit" className={`flex-1 px-8 py-4 ${showAllowanceModal ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'} rounded-2xl font-black uppercase text-xs tracking-widest text-white transition-all shadow-2xl`}>Apply Adjustment</button>
                             </div>
                         </form>
                     </div>

@@ -18,6 +18,7 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
     const [schoolData, setSchoolData] = useState({ name: '', address: '', phone: '', email: '' });
     const [userData, setUserData] = useState({ username: '', firstName: '', lastName: '', role: 'SCHOOL_ADMIN', password: '', schoolId: '', admissionNumber: '', classId: '' });
     const [createdCredentials, setCreatedCredentials] = useState(null);
+    const [resetCreds, setResetCreds] = useState(null);
 
     useEffect(() => {
         setLoading(true);
@@ -32,6 +33,19 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
         })
         .catch(() => setLoading(false));
     }, [token]);
+
+    const handleResetPassword = async (userId) => {
+        if (!confirm('Are you sure you want to REGENERATE credentials for this user? This will overwrite their current password.')) return;
+        try {
+            const res = await fetch(`${API_BASE}/super-admin/users/${userId}/reset-password`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            setResetCreds(data);
+        } catch (err) { alert(err.message); }
+    };
 
     const handleCreateSchool = async (e) => {
         e.preventDefault();
@@ -192,12 +206,15 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
                                                 onSchoolChange(school.id);
                                                 navigate('/', { replace: true }); 
                                             }} 
-                                            className="p-3 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-slate-400 hover:text-primary transition-all shadow-sm"
+                                            className="px-4 py-2 rounded-xl hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-primary flex items-center gap-2 transition-all shadow-sm font-bold text-xs"
                                         >
-                                            <ArrowUpRight size={20} />
+                                            <ArrowUpRight size={16} /> Enter
                                         </button>
-                                        <button onClick={() => handleDeleteSchool(school.id, school.name)} className="p-3 rounded-xl hover:bg-rose-50 border border-transparent hover:border-rose-100 text-slate-400 hover:text-rose-600 transition-all shadow-sm">
-                                            <Trash2 size={20} />
+                                        <button 
+                                            onClick={() => handleDeleteSchool(school.id, school.name)} 
+                                            className="px-4 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center gap-2 transition-all shadow-sm font-bold text-xs"
+                                        >
+                                            <Trash2 size={16} /> Delete
                                         </button>
                                     </div>
                                 </td>
@@ -242,8 +259,12 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
                                     {user.schoolId ? (summary?.branches.find(b => b.id === user.schoolId)?.name || `Node ${user.schoolId}`) : 'Global Ecosystem'}
                                 </td>
                                 <td className="px-8 py-7 text-right">
-                                    <button className="p-3 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-slate-400 hover:text-rose-500 transition-all shadow-sm">
-                                        <Loader2 size={20} className="hover:animate-spin" />
+                                    <button 
+                                        onClick={() => handleResetPassword(user.id)}
+                                        title="Regenerate Credentials"
+                                        className="p-3 rounded-xl hover:bg-emerald-50 border border-transparent hover:border-emerald-100 text-slate-400 hover:text-emerald-600 transition-all shadow-sm"
+                                    >
+                                        <ShieldCheck size={20} />
                                     </button>
                                 </td>
                             </tr>
@@ -343,7 +364,7 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
                     <div className="space-y-8 p-8 border-2 border-dashed border-emerald-100 rounded-[32px] bg-emerald-50/30 print:border-none print:bg-white print:p-0">
                         <header className="text-center space-y-2">
                              <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto text-white shadow-lg shadow-emerald-500/20 print:hidden">
-                                <ShieldCheck size={32} />
+                                 <ShieldCheck size={32} />
                              </div>
                              <h4 className="text-2xl font-black text-slate-900 mt-4 leading-tight">Branch Access Established</h4>
                              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-[3px]">Primary Administrator Provisioned</p>
@@ -385,6 +406,29 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
                         <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-widest leading-relaxed print:mt-10">
                             Warning: This credential set is highly sensitive. <br/> Please hand this securely to the target branch principal.
                         </p>
+                    </div>
+                </Modal>
+            )}
+
+            {resetCreds && (
+                <Modal title="Credentials Regenerated" onClose={() => setResetCreds(null)}>
+                    <div className="space-y-6 p-6 bg-emerald-50/50 rounded-3xl border border-emerald-100">
+                        <div className="space-y-4">
+                            <div className="bg-white p-5 rounded-2xl border border-emerald-100">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Username</p>
+                                <p className="text-lg font-black text-slate-900">{resetCreds.username}</p>
+                            </div>
+                            <div className="bg-white p-5 rounded-2xl border border-emerald-100">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">New Temporary Password</p>
+                                <p className="text-2xl font-black text-emerald-600 tracking-tighter">{resetCreds.tempPassword}</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setResetCreds(null)}
+                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all"
+                        >
+                            Done
+                        </button>
                     </div>
                 </Modal>
             )}

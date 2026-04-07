@@ -278,23 +278,27 @@ model SalaryComponent {
 }
 
 model StaffVoucher {
-  id            Int      @id @default(autoincrement())
-  schoolId      Int
-  staffId       Int
-  month         Int      // 1-12
-  year          Int
-  totalEarnings Float
-  totalDeductions Float
-  netAmount     Float
-  status        String   @default("PENDING") // PENDING, PAID
-  paidAt        DateTime?
-  fingerprint   String?  @unique
+  id                Int      @id @default(autoincrement())
+  schoolId          Int
+  staffId           Int
+  academicSessionId Int?
+  termId            Int?
+  month             Int      // 1-12
+  year              Int
+  totalEarnings     Float
+  totalDeductions   Float
+  netAmount         Float
+  status            String   @default("PENDING") // PENDING, PAID
+  paidAt            DateTime?
+  fingerprint       String?  @unique
   
-  school        School   @relation(fields: [schoolId], references: [id])
-  staff         Staff    @relation(fields: [staffId], references: [id])
-  items         VoucherItem[]
+  school            School   @relation(fields: [schoolId], references: [id])
+  staff             Staff    @relation(fields: [staffId], references: [id])
+  session           AcademicSession? @relation(fields: [academicSessionId], references: [id])
+  term              Term?            @relation(fields: [termId], references: [id])
+  items             VoucherItem[]
 
-  createdAt     DateTime @default(now())
+  createdAt         DateTime @default(now())
 }
 
 model VoucherItem {

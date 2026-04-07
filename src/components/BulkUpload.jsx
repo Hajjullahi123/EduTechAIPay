@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Upload, FileText, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, FileText, CheckCircle2, AlertCircle, Loader2, Download } from 'lucide-react'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
@@ -32,6 +32,18 @@ const BulkUpload = ({ schoolId }) => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleDownloadTemplate = () => {
+        const headers = ['firstName', 'lastName', 'admissionNumber', 'classId', 'isScholarship'];
+        const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "student_upload_template.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -76,7 +88,15 @@ const BulkUpload = ({ schoolId }) => {
 
                 <div className="space-y-6">
                     <div className="glass-card p-8 bg-white sophisticated-shadow border-slate-200">
-                        <h4 className="text-[10px] font-black text-primary uppercase tracking-[3px] mb-6">Required Columns</h4>
+                        <div className="flex items-center justify-between mb-6">
+                            <h4 className="text-[10px] font-black text-primary uppercase tracking-[3px]">Required Columns</h4>
+                            <button 
+                                onClick={handleDownloadTemplate}
+                                className="px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors flex items-center gap-2"
+                            >
+                                <Download size={14} /> Download CSV Template
+                            </button>
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             {['firstName', 'lastName', 'admissionNumber', 'classId', 'isScholarship'].map(col => (
                                 <div key={col} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
