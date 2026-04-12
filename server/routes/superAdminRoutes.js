@@ -13,84 +13,85 @@ const superAdminOnly = (req, res, next) => {
     next();
 };
 
-// Create a new school branch with a default admin
-router.post('/schools', authenticate, superAdminOnly, async (req, res) => {
-    const { name, address, phone, email } = req.body;
+// Register a new School Organization (SchoolGroup) and its primary administrator
+router.post('/organizations', authenticate, superAdminOnly, async (req, res) => {
+    const { orgName, adminFirstName, adminLastName, adminUsername, adminPassword } = req.body;
     const bcrypt = require('bcryptjs');
     
     try {
         const result = await prisma.$transaction(async (tx) => {
-            const school = await tx.school.create({
-                data: {
-                    name,
-                    address,
-                    phone,
-                    email,
-                    groupId: req.user.groupId
-                }
+            // 1. Create the Group
+            const group = await tx.schoolGroup.create({
+                data: { name: orgName }
             });
-
-            // Create default admin for this school
-            const username = `admin_${name.toLowerCase().replace(/\s+/g, '_')}_${school.id}`;
-            const tempPassword = 'welcome2026';
+ 
+            // 2. Create the Head Administrator for this specific group
+            const tempPassword = adminPassword || 'welcome2026';
             const passwordHash = await bcrypt.hash(tempPassword, 10);
-
+ 
             const admin = await tx.user.create({
                 data: {
-                    username,
-                    firstName: 'School',
-                    lastName: 'Admin',
+                    username: adminUsername,
+                    firstName: adminFirstName,
+                    lastName: adminLastName,
                     role: 'SCHOOL_ADMIN',
                     passwordHash,
-                    groupId: req.user.groupId,
-                    schoolId: school.id
+                    groupId: group.id,
+                    schoolId: null // Head admins manage the entire group, not just one branch initially
                 }
             });
-
-            return { school, admin, tempPassword };
+ 
+            return { group, admin, tempPassword };
         });
-
+ 
         res.json(result);
     } catch (error) {
         res.status(400).json({ error: error.message });
     }
 });
 
-// Get group dashboard summary
+
+// Get ecosystem summary (Global visibility for Root Super Admin)
 router.get('/summary', authenticate, superAdminOnly, async (req, res) => {
     try {
-        const schools = await prisma.school.findMany({
-            where: { groupId: req.user.groupId },
+        const groups = await prisma.schoolGroup.findMany({
             include: {
                 _count: {
-                    select: { students: true }
+                    select: { schools: true }
+                },
+                schools: {
+                    include: {
+                        _count: { select: { students: true } }
+                    }
                 }
             }
         });
 
-        const totalStudents = schools.reduce((acc, s) => acc + s._count.students, 0);
+        const totalSchools = groups.reduce((acc, g) => acc + g._count.schools, 0);
         
         res.json({
-            schoolCount: schools.length,
-            totalStudents,
-            branches: schools
+            organizationCount: groups.length,
+            totalSchools,
+            organizations: groups
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get all users in the group
+
+// Get all administrative users in the ecosystem
 router.get('/users', authenticate, superAdminOnly, async (req, res) => {
     try {
         const users = await prisma.user.findMany({
-            where: { groupId: req.user.groupId },
+            where: { 
+                role: { in: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] } 
+            },
             include: {
+                group: true,
                 student: {
                     include: { classModel: true }
-                },
-                group: true,
-                paymentsRecorded: { take: 5 }
+                }
             }
         });
         res.json(users);
@@ -98,6 +99,7 @@ router.get('/users', authenticate, superAdminOnly, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // Register a new user globally
 router.post('/users', authenticate, superAdminOnly, async (req, res) => {

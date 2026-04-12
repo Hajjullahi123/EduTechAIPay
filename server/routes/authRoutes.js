@@ -7,43 +7,9 @@ const jwt = require('jsonwebtoken');
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'standalone_secret_123';
 
-// Register a new SchoolGroup and Super Admin
-router.post('/register', async (req, res) => {
-    const { groupName, username, password, firstName, lastName } = req.body;
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        
-        // Use a transaction to ensure atomic group and user creation
-        const result = await prisma.$transaction(async (tx) => {
-            const group = await tx.schoolGroup.create({
-                data: { name: groupName }
-            });
-            
-            const user = await tx.user.create({
-                data: {
-                    username,
-                    passwordHash: hashedPassword,
-                    firstName,
-                    lastName,
-                    role: 'SUPER_ADMIN',
-                    groupId: group.id
-                }
-            });
-            
-            return { user, group };
-        });
+// Public registration is disabled to maintain a strictly hierarchical system.
+// New organizations must be provisioned by the Root Super Admin.
 
-        const token = jwt.sign(
-            { userId: result.user.id, role: result.user.role, groupId: result.group.id },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
-        res.json({ token, user: result.user, group: result.group });
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
-});
 
 // Login
 router.post('/login', async (req, res) => {
@@ -64,7 +30,15 @@ router.post('/login', async (req, res) => {
             { expiresIn: '24h' }
         );
 
-        res.json({ token, user, group: user.group });
+        // For School Admins, check if they have any schools created yet
+        let schoolCount = 0;
+        if (user.role === 'SCHOOL_ADMIN' && user.groupId) {
+            schoolCount = await prisma.school.count({
+                where: { groupId: user.groupId }
+            });
+        }
+
+        res.json({ token, user, schoolCount });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

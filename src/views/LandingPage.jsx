@@ -1,17 +1,40 @@
 import { useNavigate } from 'react-router-dom';
-import { Building2, ShieldCheck, Zap, ArrowRight, BarChart3, Users, Globe, Lock, Cpu, Star, Activity } from 'lucide-react';
+import { Building2, ShieldCheck, Zap, ArrowRight, BarChart3, Users, Globe, Lock, Cpu, Star, Activity, Smartphone } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import EduTechLogo from '../components/EduTechLogo';
 
 const LandingPage = () => {
     const navigate = useNavigate();
     const [scrolled, setScrolled] = useState(false);
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+    const [showInstallBtn, setShowInstallBtn] = useState(false);
 
     useEffect(() => {
         const handleScroll = () => setScrolled(window.scrollY > 50);
         window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
+
+        const handleBeforeInstall = (e) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+            setShowInstallBtn(true);
+        };
+        window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+        };
     }, []);
+
+    const handleInstall = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            setShowInstallBtn(false);
+            setDeferredPrompt(null);
+        }
+    };
 
     return (
         <div className="min-h-screen bg-[#020617] text-white selection:bg-primary-500/30 selection:text-primary-200 overflow-x-hidden relative font-['Outfit']">
@@ -52,8 +75,13 @@ const LandingPage = () => {
                     </div>
 
                     <div className="flex items-center gap-6">
-                        <button onClick={() => navigate('/login')} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all">Portal Access</button>
-                        <button onClick={() => navigate('/register')} className="px-8 py-3 bg-white text-[#020617] rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-primary-500 hover:text-white transition-all shadow-2xl shadow-white/5 hover:scale-105 active:scale-95">Initialize Project</button>
+                        {showInstallBtn && (
+                            <button onClick={handleInstall} className="md:hidden px-4 py-2 bg-primary-600/10 border border-primary-600/20 rounded-xl text-[9px] font-black uppercase tracking-widest text-primary-400 flex items-center gap-2 animate-pulse">
+                                <Smartphone size={14} /> Install App
+                            </button>
+                        )}
+                        <button onClick={() => navigate('/login')} className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-white transition-all">Client Portal</button>
+                        <button onClick={() => navigate('/login')} className="px-8 py-3 bg-white text-[#020617] rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-primary-500 hover:text-white transition-all shadow-2xl shadow-white/5 hover:scale-105 active:scale-95">Executive Login</button>
                     </div>
                 </div>
             </nav>
@@ -79,12 +107,19 @@ const LandingPage = () => {
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-6 justify-center items-center animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-500">
-                        <button onClick={() => navigate('/register')} className="px-12 py-6 bg-primary-600 rounded-3xl font-black uppercase text-sm tracking-[3px] hover:bg-primary-500 transition-all shadow-[0_20px_50px_-10px_rgba(14,165,233,0.4)] hover:scale-105 active:scale-95 flex items-center gap-4 group">
-                           Provision Account <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
+                        <button onClick={() => navigate('/login')} className="px-12 py-6 bg-primary-600 rounded-3xl font-black uppercase text-sm tracking-[3px] hover:bg-primary-500 transition-all shadow-[0_20px_50px_-10px_rgba(14,165,233,0.4)] hover:scale-105 active:scale-95 flex items-center gap-4 group">
+                           Enter Secure Portal <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
                         </button>
-                        <button className="px-12 py-6 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl font-black uppercase text-sm tracking-[3px] hover:bg-white/10 transition-all shadow-2xl flex items-center gap-4 group">
-                           View Architecture <Globe size={20} className="group-hover:rotate-180 transition-all duration-1000" />
-                        </button>
+                        
+                        {showInstallBtn ? (
+                             <button onClick={handleInstall} className="px-12 py-6 bg-emerald-600/10 border border-emerald-500/30 rounded-3xl font-black uppercase text-sm tracking-[3px] hover:bg-emerald-600 hover:text-white transition-all shadow-2xl flex items-center gap-4 group animate-bounce-subtle">
+                                Install Mobile PWA <Smartphone size={22} className="group-hover:scale-110 transition-transform" />
+                             </button>
+                        ) : (
+                            <button className="px-12 py-6 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl font-black uppercase text-sm tracking-[3px] hover:bg-white/10 transition-all shadow-2xl flex items-center gap-4 group">
+                               View Architecture <Globe size={20} className="group-hover:rotate-180 transition-all duration-1000" />
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -170,6 +205,13 @@ const LandingPage = () => {
                 @keyframes gridMove {
                     0% { transform: perspective(800px) rotateX(60deg) translateY(0); }
                     100% { transform: perspective(800px) rotateX(60deg) translateY(40px); }
+                }
+                @keyframes bounce-subtle {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-10px); }
+                }
+                .animate-bounce-subtle {
+                    animation: bounce-subtle 3s ease-in-out infinite;
                 }
                 .text-gradient-gold {
                     background: linear-gradient(135deg, #FDB931 0%, #D8A027 100%);

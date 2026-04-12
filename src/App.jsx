@@ -18,6 +18,7 @@ import RegisterPage from './views/RegisterPage'
 import SuperAdminDashboard from './views/SuperAdminDashboard'
 import SecuritySettings from './components/SecuritySettings'
 import DocumentVerification from './views/DocumentVerification'
+import BranchManagement from './views/BranchManagement'
 import InstallPWA from './components/InstallPWA'
 import EduTechLogo from './components/EduTechLogo'
 import SetupWizard from './views/SetupWizard'
@@ -804,7 +805,8 @@ const Sidebar = () => {
         // Management 
         { name: 'Analytics', icon: LayoutDashboard, path: '/', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Admin Setup', icon: SettingsIcon, path: '/admin-setup', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Global Control', icon: ShieldCheck, path: '/super-admin', roles: ['SUPER_ADMIN'] },
+        { name: 'Manage Branches', icon: Building2, path: '/manage-branches', roles: ['SCHOOL_ADMIN'] },
+        { name: 'Ecosystem Hub', icon: ShieldCheck, path: '/super-admin', roles: ['SUPER_ADMIN'] },
         { name: 'Verify Document', icon: ShieldCheck, path: '/verify', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
         { name: 'Messaging Hub', icon: MessageSquare, path: '/communication', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Activity History', icon: ActivityIcon, path: '/audit-logs', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
@@ -1097,69 +1099,67 @@ const App = () => {
     return (
         <AuthProvider>
             <InstallPWA />
-            {!isInitialized ? (
-                <Routes>
-                    <Route path="/setup" element={<SetupWizard />} />
-                    <Route path="*" element={<Navigate to="/setup" />} />
-                </Routes>
-            ) : (
-                <Routes>
-                    <Route path="/setup" element={<Navigate to="/login" />} />
-                    <Route path="/landing" element={<LandingPage />} />
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/register" element={<RegisterPage />} />
-                    
-                    <Route path="/*" element={
-                        <ProtectedRoute>
-                            <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden font-outfit">
-                                <Sidebar />
-                                <div className="flex-1 flex flex-col overflow-hidden relative">
-                                    <Navbar schoolId={schoolId} onSchoolChange={handleSchoolChange} />
-                                    <main className="flex-1 overflow-y-auto p-10 custom-scrollbar relative z-10 bg-white/40">
-                                        <Routes>
-                                            <Route path="/" element={<Dashboard schoolId={schoolId} />} />
-                                            <Route path="/super-admin" element={
-                                                <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
-                                                    <SuperAdminDashboard onSchoolChange={handleSchoolChange} />
-                                                </ProtectedRoute>
-                                            } />
-                                            <Route path="/security" element={
-                                                <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
-                                                    <SecuritySettings />
-                                                </ProtectedRoute>
-                                            } />
-                                            <Route path="/verify" element={
-                                                <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR']}>
-                                                    <DocumentVerification />
-                                                </ProtectedRoute>
-                                            } />
-                                            <Route path="/communication" element={
-                                                <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
-                                                    <CommunicationHub />
-                                                </ProtectedRoute>
-                                            } />
-                                            <Route path="/students" element={<Students schoolId={schoolId} />} />
-                                            <Route path="/bulk-upload" element={<BulkUpload schoolId={schoolId} />} />
-                                            <Route path="/misc-fees" element={<MiscFees schoolId={schoolId} />} />
-                                            <Route path="/scholarships" element={<Scholarships schoolId={schoolId} />} />
-                                            <Route path="/staff" element={<StaffManagement schoolId={schoolId} />} />
-                                            <Route path="/payroll" element={<PayrollConsole schoolId={schoolId} />} />
-                                            <Route path="/admin-setup" element={
-                                                <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
-                                                    <AdminSetup schoolId={schoolId} />
-                                                </ProtectedRoute>
-                                            } />
-                                            <Route path="/comms-hub" element={<CommunicationHub schoolId={schoolId} />} />
-                                            <Route path="/audit-logs" element={<AuditLogs schoolId={schoolId} />} />
-                                            <Route path="*" element={<Navigate to="/" />} />
-                                        </Routes>
-                                    </main>
-                                </div>
+            <Routes>
+                <Route path="/" element={<Navigate to="/landing" />} />
+                <Route path="/landing" element={<LandingPage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/setup" element={<SetupWizard />} />
+                
+                <Route path="/*" element={
+                    <ProtectedRoute>
+                        <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden font-outfit">
+                            <Sidebar />
+                            <div className="flex-1 flex flex-col overflow-hidden relative">
+                                <Navbar schoolId={schoolId} onSchoolChange={handleSchoolChange} />
+                                <main className="flex-1 overflow-y-auto p-10 custom-scrollbar relative z-10 bg-white/40">
+                                    <Routes>
+                                        <Route path="/" element={<Dashboard schoolId={schoolId} />} />
+                                        <Route path="/super-admin" element={
+                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                                                <SuperAdminDashboard onSchoolChange={handleSchoolChange} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/security" element={
+                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
+                                                <SecuritySettings />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/verify" element={
+                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR']}>
+                                                <DocumentVerification />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/communication" element={
+                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
+                                                <CommunicationHub />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/students" element={<Students schoolId={schoolId} />} />
+                                        <Route path="/bulk-upload" element={<BulkUpload schoolId={schoolId} />} />
+                                        <Route path="/misc-fees" element={<MiscFees schoolId={schoolId} />} />
+                                        <Route path="/scholarships" element={<Scholarships schoolId={schoolId} />} />
+                                        <Route path="/staff" element={<StaffManagement schoolId={schoolId} />} />
+                                        <Route path="/payroll" element={<PayrollConsole schoolId={schoolId} />} />
+                                        <Route path="/admin-setup" element={
+                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
+                                                <AdminSetup schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/manage-branches" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN']}>
+                                                <BranchManagement />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/comms-hub" element={<CommunicationHub schoolId={schoolId} />} />
+                                        <Route path="/audit-logs" element={<AuditLogs schoolId={schoolId} />} />
+                                        <Route path="*" element={<Navigate to="/" />} />
+                                    </Routes>
+                                </main>
                             </div>
-                        </ProtectedRoute>
-                    } />
-                </Routes>
-            )}
+                        </div>
+                    </ProtectedRoute>
+                } />
+            </Routes>
         </AuthProvider>
     )
 }
