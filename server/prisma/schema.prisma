@@ -108,6 +108,7 @@ model AcademicSession {
   terms             Term[]
   feeRecords        FeeRecord[]
   feeStructures     ClassFeeStructure[]
+  staffVouchers     StaffVoucher[]
 }
 
 model Term {
@@ -121,6 +122,7 @@ model Term {
   session           AcademicSession     @relation(fields: [academicSessionId], references: [id])
   feeRecords        FeeRecord[]
   feeStructures     ClassFeeStructure[]
+  staffVouchers     StaffVoucher[]
 }
 
 model Class {
