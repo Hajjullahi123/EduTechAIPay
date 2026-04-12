@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Building2, Plus, Users, BarChart3, ArrowUpRight, Loader2, Search, UserCheck, ShieldCheck, Mail, Phone, MapPin, X, Trash2 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const SuperAdminDashboard = ({ onSchoolChange }) => {
     const navigate = useNavigate();

@@ -23,7 +23,7 @@ import EduTechLogo from './components/EduTechLogo'
 import SetupWizard from './views/SetupWizard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 // Helper for multitenant fetch
 const apiFetch = (url, options = {}, schoolId) => {

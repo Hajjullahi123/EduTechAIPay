@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShieldCheck, Building2, UserCircle, CheckCircle2, Loader2, ArrowRight, ArrowLeft, Key } from 'lucide-react';
 import EduTechLogo from '../components/EduTechLogo';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const SetupWizard = () => {
     const [step, setStep] = useState(1);
