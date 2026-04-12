@@ -1,14 +1,26 @@
 # production stage
-FROM node:20-alpine AS build-stage
+FROM node:20 AS build-stage
 WORKDIR /app
+
+# Copy package files and the prisma schema FIRST to satisfy postinstall
 COPY package*.json ./
-RUN npm install --ignore-scripts
+COPY server/prisma/schema.prisma ./server/prisma/schema.prisma
+
+# Now run a normal npm install (this fetches all the correct OS dependencies)
+RUN npm install
+
+# Copy the rest of the application
 COPY . .
+
+# Generate the prisma client and build the frontend
 RUN npx prisma generate --schema=server/prisma/schema.prisma
 RUN npm run web:build
 
 # runtime stage
-FROM node:20-alpine AS production-stage
+FROM node:20-slim AS production-stage
+# Prisma needs openssl on slim images
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=build-stage /app/dist ./dist
 COPY --from=build-stage /app/server ./server
