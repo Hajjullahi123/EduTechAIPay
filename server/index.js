@@ -57,19 +57,41 @@ app.use('/api/payroll', authenticate, payrollRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/comms', authenticate, communicationRoutes);
 
+// PRODUCTION: Serve React Frontend
+const distPath = path.join(__dirname, '../dist');
+app.use(express.static(distPath));
+
+// PRODUCTION: Support Client-side routing (SPAs)
+app.get('*', (req, res) => {
+    // If it's an API route that wasn't matched above, 404 it
+    if (req.url.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API route not found' });
+    }
+    // Otherwise serve index.html
+    res.sendFile(path.join(distPath, 'index.html'));
+});
+
 // Start server with port discovery
 (async () => {
-    if (!process.env.PORT) {
+    // If not in production, or if no port provided by host, find one
+    if (process.env.NODE_ENV !== 'production' && !process.env.PORT) {
         port = await findAvailablePort(DEFAULT_PORT);
     }
     
-    const server = app.listen(port, () => {
-        console.log(`Standalone local backend running on port ${port}`);
+    // cPanel/QServers often passes the port via environment
+    const actualPort = process.env.PORT || port;
+
+    const server = app.listen(actualPort, () => {
+        console.log(`EduTech Pro Suite running on port ${actualPort}`);
         // Notify Electron of the actual port being used
-        if (process.send) process.send({ type: 'server-ready', port }); 
+        if (process.send) process.send({ type: 'server-ready', port: actualPort }); 
         
         // FISCAL SNAPSHOT PROTOCOL: Initialize startup backup
-        createBackup('startup').catch(err => console.error('[STARTUP BACKUP ERROR]', err));
+        if (process.env.NODE_ENV === 'production') {
+            console.log('[PROD] System initialized in production mode.');
+        } else {
+            createBackup('startup').catch(err => console.error('[STARTUP BACKUP ERROR]', err));
+        }
     });
 
     process.on('SIGTERM', () => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, UserPlus, Phone, Banknote, Shield, Search, X, Loader2, ArrowUpRight, Download, Upload, Edit3, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const StaffManagement = ({ schoolId }) => {
     const [staff, setStaff] = useState([]);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, CreditCard, Receipt, Loader2, Search } from 'lucide-react'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const MiscFees = ({ schoolId }) => {
     const [fees, setFees] = useState([]);

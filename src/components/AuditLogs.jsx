@@ -1,7 +1,7 @@
 import { Shield, Clock, User, Activity } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const AuditLogs = ({ schoolId }) => {
     const [logs, setLogs] = useState([]);

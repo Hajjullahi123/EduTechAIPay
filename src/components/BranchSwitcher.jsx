@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Building2, ChevronDown, Check } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const BranchSwitcher = ({ currentSchoolId, onSwitch }) => {
     const [branches, setBranches] = useState([]);

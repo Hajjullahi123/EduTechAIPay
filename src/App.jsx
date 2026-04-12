@@ -23,7 +23,7 @@ import EduTechLogo from './components/EduTechLogo'
 import SetupWizard from './views/SetupWizard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3001/api';
 
 // Helper for multitenant fetch
 const apiFetch = (url, options = {}, schoolId) => {
@@ -1050,23 +1050,45 @@ const App = () => {
     };
 
     useEffect(() => {
+        // FAILSAFE: Force loading to end after 8 seconds if fetch hangs
+        const timer = setTimeout(() => {
+            if (checkingStatus) {
+                console.warn('System status check timed out. Proceeding with caution.');
+                setCheckingStatus(false);
+            }
+        }, 8000);
+
         // Check if system is initialized (Public endpoint)
-        fetch(`${API_BASE}/system/status`)
+        const controller = new AbortController();
+        
+        fetch(`${API_BASE}/system/status`, { signal: controller.signal })
             .then(res => res.json())
             .then(status => {
                 setIsInitialized(status.isInitialized);
+                setCheckingStatus(false);
+                clearTimeout(timer);
             })
-            .catch(err => console.error('Status check failed:', err))
-            .finally(() => setCheckingStatus(false));
+            .catch(err => {
+                console.error('Status check failed:', err);
+                // On failure, the failsafe timer will eventually let the user in
+            });
+
+        return () => {
+            controller.abort();
+            clearTimeout(timer);
+        };
     }, []);
 
     if (checkingStatus) {
         return (
             <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center gap-6">
-                <EduTechLogo size={80} className="animate-pulse" />
+                <EduTechLogo size={80} className="animate-pulse shadow-2xl shadow-primary-500/20 rounded-3xl" />
                 <div className="flex flex-col items-center gap-2">
                     <Loader2 className="animate-spin text-primary-500" size={32} />
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[4px]">Initializing EduTech Suite...</p>
+                    <div className="text-center group">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[4px]">Initializing EduTech Suite...</p>
+                        <p className="text-[8px] font-bold text-slate-700 uppercase tracking-[2px] mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Verifying Local Data Integrity</p>
+                    </div>
                 </div>
             </div>
         );

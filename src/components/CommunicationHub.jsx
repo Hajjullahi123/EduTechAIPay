@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare, Calendar, User, CheckCircle2, AlertCircle, Phone, Search, X, MessageCircle } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const CommunicationHub = ({ schoolId }) => {
     const [complaints, setComplaints] = useState([]);

@@ -4,7 +4,7 @@ import StaffVoucher from './StaffVoucher';
 import PayrollAnalytics from './PayrollAnalytics';
 import StaffSmartCard from './StaffSmartCard';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const PayrollConsole = ({ schoolId }) => {
     const [vouchers, setVouchers] = useState([]);

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { GraduationCap, Award, Search, Loader2, Calendar } from 'lucide-react'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const Scholarships = ({ schoolId }) => {
     const [students, setStudents] = useState([]);

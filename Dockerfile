@@ -18,4 +18,4 @@ COPY --from=build-stage /app/main.js ./
 COPY --from=build-stage /app/preload.js ./
 
 EXPOSE 3001
-CMD ["node", "server/index.js"]
+CMD npx prisma db push && node server/index.js

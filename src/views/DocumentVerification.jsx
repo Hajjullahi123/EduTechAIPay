@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, Search, CheckCircle2, XCircle, Loader2, Calendar, User, CreditCard, Building2, ShieldAlert } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const DocumentVerification = () => {
     const { token } = useAuth();

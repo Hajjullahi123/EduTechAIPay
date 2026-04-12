@@ -2,14 +2,13 @@ import React, { useState } from 'react';
 import { ShieldCheck, Building2, UserCircle, CheckCircle2, Loader2, ArrowRight, ArrowLeft, Key } from 'lucide-react';
 import EduTechLogo from '../components/EduTechLogo';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3001/api';
 
 const SetupWizard = () => {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [formData, setFormData] = useState({
-        licenseKey: '',
         schoolName: '',
         adminUsername: '',
         adminPassword: '',
@@ -48,34 +47,6 @@ const SetupWizard = () => {
                 return (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                         <div className="text-center space-y-2">
-                            <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto text-primary-500 mb-4">
-                                <Key size={32} />
-                            </div>
-                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">License Verification</h2>
-                            <p className="text-slate-500 text-sm">Enter your standalone activation key to begin.</p>
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Activation Key</label>
-                            <input 
-                                value={formData.licenseKey}
-                                onChange={e => setFormData({...formData, licenseKey: e.target.value})}
-                                placeholder="XXXX-XXXX-XXXX-XXXX"
-                                className="w-full bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-2xl px-6 py-4 text-center font-mono text-lg focus:ring-2 focus:ring-primary-500/20 outline-none transition-all"
-                            />
-                        </div>
-                        <button 
-                            disabled={!formData.licenseKey}
-                            onClick={handleNext}
-                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 group disabled:opacity-50"
-                        >
-                            Verify Key <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                        </button>
-                    </div>
-                );
-            case 2:
-                return (
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                        <div className="text-center space-y-2">
                             <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto text-emerald-500 mb-4">
                                 <Building2 size={32} />
                             </div>
@@ -91,19 +62,16 @@ const SetupWizard = () => {
                                 className="w-full bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all"
                             />
                         </div>
-                        <div className="flex gap-4">
-                            <button onClick={handleBack} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all">Back</button>
-                            <button 
-                                disabled={!formData.schoolName}
-                                onClick={handleNext}
-                                className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 group"
-                            >
-                                Next Step <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                            </button>
-                        </div>
+                        <button 
+                            disabled={!formData.schoolName}
+                            onClick={handleNext}
+                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-2 group"
+                        >
+                            Next Step <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                        </button>
                     </div>
                 );
-            case 3:
+            case 2:
                 return (
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                         <div className="text-center space-y-2">
@@ -191,7 +159,7 @@ const SetupWizard = () => {
 
                     {/* Progress Indicator */}
                     <div className="mt-10 flex justify-center gap-2">
-                        {[1, 2, 3].map(i => (
+                        {[1, 2].map(i => (
                             <div 
                                 key={i} 
                                 className={`h-1.5 rounded-full transition-all duration-500 ${step >= i ? 'w-8 bg-primary-500' : 'w-2 bg-slate-100'}`}

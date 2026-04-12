@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { MessageSquare, Send, CheckCircle2, AlertCircle, History, Smartphone, Mail, ShieldCheck, Loader2, Calendar, Target, User } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const CommunicationHub = () => {
     const { token } = useAuth();

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Building2, Mail, Lock, Loader2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import EduTechLogo from '../components/EduTechLogo';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:3001/api';
 
 const LoginPage = () => {
     const navigate = useNavigate();
