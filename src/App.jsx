@@ -1,5 +1,5 @@
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Receipt, CreditCard, Bell, Settings as SettingsIcon, LogOut, Search, Plus, Filter, Download, ArrowUpRight, GraduationCap, Building2, CheckCircle2, AlertCircle, X, Loader2, Trash2, Printer, ShieldCheck, MessageSquare, Activity as ActivityIcon } from 'lucide-react'
+import { LayoutDashboard, Users, Receipt, CreditCard, Bell, Settings as SettingsIcon, LogOut, Search, Plus, Filter, Download, ArrowUpRight, GraduationCap, Building2, CheckCircle2, AlertCircle, X, Loader2, Trash2, Printer, ShieldCheck, MessageSquare, Activity as ActivityIcon, Menu } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import StatsOverview from './components/StatsOverview'
 import SecureReceipt from './components/SecureReceipt'
@@ -785,7 +785,7 @@ const Students = ({ schoolId }) => {
     )
 }
 
-const Sidebar = () => {
+const Sidebar = ({ isOpen, onToggle }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { user, logout } = useAuth();
@@ -812,43 +812,43 @@ const Sidebar = () => {
 
     const visibleItems = menuItems.filter(item => user && item.roles.includes(user.role));
 
-    const displayName = user ? `${user.firstName} ${user.lastName}` : 'Admin User';
-    const displayRole = user?.role === 'SUPER_ADMIN' ? 'Super Admin' : user?.role === 'SCHOOL_ADMIN' ? 'School Admin' : user?.role || 'User';
-
     return (
-        <aside className="w-64 flex flex-col z-30 relative bg-[#184a2c] text-white">
-            <div className="p-6 border-b border-[#22633a]">
-                <div className="cursor-pointer group text-center" onClick={() => navigate('/')}>
-                    <h2 className="font-bold text-lg leading-tight uppercase tracking-wider text-green-50">
-                        {user?.role === 'SUPER_ADMIN' ? 'EduTech Universal' : 'Amana Academy Model'}
+        <aside className={`fixed inset-y-0 left-0 w-72 lg:static lg:block transform transition-transform duration-300 ease-in-out z-30 flex flex-col bg-[#184a2c] text-white shadow-2xl ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+            <div className="p-8 border-b border-[#22633a]">
+                <div className="cursor-pointer group flex flex-col items-center text-center" onClick={() => { navigate('/'); onToggle?.(); }}>
+                    <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4 transition-all group-hover:bg-white/20">
+                        <ShieldCheck size={28} className="text-green-300" />
+                    </div>
+                    <h2 className="font-black text-sm leading-tight uppercase tracking-[3px] text-white">
+                        {user?.role === 'SUPER_ADMIN' ? 'EduTech Universal' : 'Amana Academy'}
                     </h2>
-                    <p className="text-[10px] text-green-200 mt-1 uppercase tracking-widest font-black">
-                        {user?.role === 'SUPER_ADMIN' ? 'Root Governance Console' : 'Branch Management Suite'}
+                    <p className="text-[9px] text-green-300/60 mt-2 uppercase tracking-[2px] font-black">
+                        {user?.role === 'SUPER_ADMIN' ? 'Root Governance' : 'Management Suite'}
                     </p>
                 </div>
             </div>
 
-            <nav className="flex-1 py-4 flex flex-col overflow-y-auto custom-scrollbar">
+            <nav className="flex-1 py-6 flex flex-col gap-1 overflow-y-auto custom-scrollbar px-4">
                 {visibleItems.map((item) => (
                     <button
                         key={item.name}
-                        onClick={() => navigate(item.path)}
-                        className={`w-full flex items-center justify-start gap-4 px-6 py-4 text-sm font-medium transition-all ${
+                        onClick={() => { navigate(item.path); onToggle?.(); }}
+                        className={`w-full flex items-center justify-start gap-4 px-5 py-4 text-xs font-black uppercase tracking-widest transition-all rounded-2xl ${
                             location.pathname === item.path 
-                            ? 'bg-[#22633a] text-white border-l-4 border-white' 
-                            : 'text-green-100 hover:bg-[#22633a] hover:text-white border-l-4 border-transparent'
+                            ? 'bg-[#22633a] text-white shadow-lg shadow-black/20 translate-x-1 outline outline-1 outline-white/10' 
+                            : 'text-green-100/60 hover:bg-[#22633a]/50 hover:text-white'
                         }`}
                     >
-                        <item.icon size={18} className={location.pathname === item.path ? 'text-white' : 'text-green-300'} />
+                        <item.icon size={18} className={location.pathname === item.path ? 'text-green-300' : 'text-green-300/40'} />
                         {item.name}
                     </button>
                 ))}
             </nav>
 
-            <div className="p-4 bg-[#113821] border-t border-[#22633a]">
+            <div className="p-6 bg-[#113821] border-t border-[#22633a]">
                 <button 
                     onClick={() => { logout(); navigate('/login'); }}
-                    className="w-full flex items-center justify-start gap-4 px-6 py-3 text-sm text-green-100 hover:text-white transition-all rounded hover:bg-[#22633a]"
+                    className="w-full flex items-center justify-start gap-4 px-6 py-4 text-xs font-black uppercase tracking-widest text-rose-300 hover:text-rose-100 transition-all rounded-2xl hover:bg-rose-500/10"
                 >
                     <LogOut size={18} /> Logout
                 </button>
@@ -857,7 +857,7 @@ const Sidebar = () => {
     )
 }
 
-const Navbar = ({ schoolId, onSchoolChange }) => {
+const Navbar = ({ schoolId, onSchoolChange, onMenuToggle }) => {
     const { user, token } = useAuth();
     const [period, setPeriod] = useState({ session: '...', term: '...' });
 
@@ -879,16 +879,29 @@ const Navbar = ({ schoolId, onSchoolChange }) => {
     }, [schoolId, user?.role, token]);
 
     return (
-        <nav className="h-20 px-10 flex items-center justify-between glass-navbar z-20">
-            <div className="flex-1 max-w-2xl flex items-center gap-4">
-                 <div className="px-4 py-2 bg-slate-50/80 border border-slate-200 rounded-2xl text-[11px] font-black text-slate-400 flex items-center gap-2 w-fit">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    {user?.role === 'SUPER_ADMIN' ? 'SECURE MULTI-BRANCH NETWORK ACTIVE' : 'SECURE BRANCH CONNECTION ACTIVE'}
-                 </div>
-                 {user?.role === 'SUPER_ADMIN' && (
-                    <BranchSwitcher currentSchoolId={schoolId} onSwitch={onSchoolChange} />
-                 )}
+        <nav className="h-20 px-4 md:px-10 flex items-center justify-between glass-navbar z-20">
+            <div className="flex items-center gap-4 flex-1">
+                <button 
+                    onClick={onMenuToggle}
+                    className="lg:hidden p-3 bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-primary-600 transition-all shadow-sm"
+                >
+                    <Menu size={20} />
+                </button>
+
+                <div className="hidden sm:flex items-center gap-4">
+                    <div className="px-4 py-2 bg-slate-50/80 border border-slate-200 rounded-2xl text-[10px] font-black text-slate-400 flex items-center gap-2 w-fit uppercase tracking-widest">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        {user?.role === 'SUPER_ADMIN' ? 'Root Governance Active' : 'Branch Secure Link'}
+                    </div>
+                </div>
+
+                <div className="flex-1 max-w-sm">
+                    {user?.role === 'SUPER_ADMIN' && (
+                        <BranchSwitcher currentSchoolId={schoolId} onSwitch={onSchoolChange} />
+                    )}
+                </div>
             </div>
+
             {user?.role !== 'SUPER_ADMIN' && (
                 <div className="flex items-center gap-6 ml-6">
                     <div className="flex flex-col items-end">
@@ -1064,10 +1077,12 @@ const App = () => {
     const [schoolId, setSchoolId] = useState(localStorage.getItem('activeSchoolId') || '');
     const [isInitialized, setIsInitialized] = useState(true);
     const [checkingStatus, setCheckingStatus] = useState(true);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    const handleSchoolChange = (id) => {
-        setSchoolId(id);
-        localStorage.setItem('activeSchoolId', id);
+    const handleSchoolChange = (newId) => {
+        setSchoolId(newId);
+        localStorage.setItem('activeSchoolId', newId);
+        setIsMobileMenuOpen(false); // Close menu on navigation
     };
 
     useEffect(() => {
@@ -1126,11 +1141,20 @@ const App = () => {
                 
                 <Route path="/*" element={
                     <ProtectedRoute>
-                        <div className="flex h-screen bg-slate-50 text-slate-800 overflow-hidden font-outfit">
-                            <Sidebar />
-                            <div className="flex-1 flex flex-col overflow-hidden relative">
-                                <Navbar schoolId={schoolId} onSchoolChange={handleSchoolChange} />
-                                <main className="flex-1 overflow-y-auto p-10 custom-scrollbar relative z-10 bg-white/40">
+                        <div className="flex h-screen overflow-hidden bg-slate-50 font-['Outfit'] relative">
+                            <Sidebar isOpen={isMobileMenuOpen} onToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+                            
+                            {/* Overlay for mobile */}
+                            {isMobileMenuOpen && (
+                                <div 
+                                    className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-[25] lg:hidden"
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                />
+                            )}
+
+                            <div className="flex-1 flex flex-col min-w-0 bg-[#f8fbfa] relative overflow-hidden">
+                                <Navbar schoolId={schoolId} onSchoolChange={handleSchoolChange} onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+                                <main className="flex-1 overflow-y-auto p-4 md:p-10 custom-scrollbar relative z-10 bg-white/40">
                                     <Routes>
                                         <Route path="/" element={<RoleBasedRedirect schoolId={schoolId} />} />
                                         <Route path="/super-admin" element={
