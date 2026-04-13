@@ -30,9 +30,14 @@ function createWindow() {
 
   mainWindow.loadURL(startUrl);
 
+  // If server-ready signal is received, we might need to refresh or redirect
+  // But for now, we wait for the first successful load or use a ready-to-show event
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    if (isDev) mainWindow.webContents.openDevTools();
+    // We only show the window when the content is actually ready to be seen
+    setTimeout(() => {
+        mainWindow.show();
+        if (isDev) mainWindow.webContents.openDevTools();
+    }, 500); // Small buffer for server to finish internal init
   });
 
   mainWindow.on('closed', () => {

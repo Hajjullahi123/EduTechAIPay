@@ -791,25 +791,23 @@ const Sidebar = () => {
     const { user, logout } = useAuth();
 
     const menuItems = [
-        // Students & Fees (Primary)
-        { name: 'Student Records', icon: Users, path: '/students', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Upload Students', icon: Download, path: '/bulk-upload', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Misc. Payments', icon: CreditCard, path: '/misc-fees', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Scholarships', icon: GraduationCap, path: '/scholarships', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        
-        // Staff and Payroll
-        { name: 'Staff Management', icon: Users, path: '/staff', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Employee Payroll', icon: CreditCard, path: '/payroll', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
-        
-        // Management 
-        { name: 'Analytics', icon: LayoutDashboard, path: '/', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Admin Setup', icon: SettingsIcon, path: '/admin-setup', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Manage Branches', icon: Building2, path: '/manage-branches', roles: ['SCHOOL_ADMIN'] },
+        // SUPER_ADMIN (Governance/Root) Menu
         { name: 'Ecosystem Hub', icon: ShieldCheck, path: '/super-admin', roles: ['SUPER_ADMIN'] },
-        { name: 'Verify Document', icon: ShieldCheck, path: '/verify', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
-        { name: 'Messaging Hub', icon: MessageSquare, path: '/communication', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
-        { name: 'Activity History', icon: ActivityIcon, path: '/audit-logs', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN'] },
         { name: 'Security Vault', icon: ShieldCheck, path: '/security', roles: ['SUPER_ADMIN'] },
+        { name: 'Infrastructure History', icon: ActivityIcon, path: '/audit-logs', roles: ['SUPER_ADMIN'] },
+        { name: 'Verify Document', icon: ShieldCheck, path: '/verify', roles: ['SUPER_ADMIN', 'SCHOOL_ADMIN', 'BURSAR'] },
+
+        // SCHOOL_ADMIN / BURSAR (Operational) Menu
+        { name: 'Analytics', icon: LayoutDashboard, path: '/', roles: ['SCHOOL_ADMIN', 'BURSAR'] },
+        { name: 'Student Records', icon: Users, path: '/students', roles: ['SCHOOL_ADMIN', 'BURSAR'] },
+        { name: 'Upload Students', icon: Download, path: '/bulk-upload', roles: ['SCHOOL_ADMIN'] },
+        { name: 'Misc. Payments', icon: CreditCard, path: '/misc-fees', roles: ['SCHOOL_ADMIN', 'BURSAR'] },
+        { name: 'Scholarships', icon: GraduationCap, path: '/scholarships', roles: ['SCHOOL_ADMIN'] },
+        { name: 'Staff Management', icon: Users, path: '/staff', roles: ['SCHOOL_ADMIN'] },
+        { name: 'Employee Payroll', icon: CreditCard, path: '/payroll', roles: ['SCHOOL_ADMIN', 'BURSAR'] },
+        { name: 'Messaging Hub', icon: MessageSquare, path: '/communication', roles: ['SCHOOL_ADMIN'] },
+        { name: 'Branch Management', icon: Building2, path: '/manage-branches', roles: ['SCHOOL_ADMIN'] },
+        { name: 'Local Admin Setup', icon: SettingsIcon, path: '/admin-setup', roles: ['SCHOOL_ADMIN'] },
     ];
 
     const visibleItems = menuItems.filter(item => user && item.roles.includes(user.role));
@@ -821,8 +819,12 @@ const Sidebar = () => {
         <aside className="w-64 flex flex-col z-30 relative bg-[#184a2c] text-white">
             <div className="p-6 border-b border-[#22633a]">
                 <div className="cursor-pointer group text-center" onClick={() => navigate('/')}>
-                    <h2 className="font-bold text-lg leading-tight uppercase tracking-wider text-green-50">Amana Academy Model School</h2>
-                    <p className="text-xs text-green-200 mt-1 italic">Knowledge is Light</p>
+                    <h2 className="font-bold text-lg leading-tight uppercase tracking-wider text-green-50">
+                        {user?.role === 'SUPER_ADMIN' ? 'EduTech Universal' : 'Amana Academy Model'}
+                    </h2>
+                    <p className="text-[10px] text-green-200 mt-1 uppercase tracking-widest font-black">
+                        {user?.role === 'SUPER_ADMIN' ? 'Root Governance Console' : 'Branch Management Suite'}
+                    </p>
                 </div>
             </div>
 
@@ -1040,6 +1042,16 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
     return children;
 };
 
+const RoleBasedRedirect = ({ schoolId }) => {
+    const { user, loading } = useAuth();
+    if (loading) return <div className="p-20 text-center animate-pulse text-slate-500 font-bold uppercase tracking-widest">Verifying Authorization...</div>;
+    
+    if (user?.role === 'SUPER_ADMIN') {
+        return <Navigate to="/super-admin" />;
+    }
+    return <Dashboard schoolId={schoolId} />;
+};
+
 const App = () => {
     const [schoolId, setSchoolId] = useState(localStorage.getItem('activeSchoolId') || '');
     const [isInitialized, setIsInitialized] = useState(true);
@@ -1112,7 +1124,7 @@ const App = () => {
                                 <Navbar schoolId={schoolId} onSchoolChange={handleSchoolChange} />
                                 <main className="flex-1 overflow-y-auto p-10 custom-scrollbar relative z-10 bg-white/40">
                                     <Routes>
-                                        <Route path="/" element={<Dashboard schoolId={schoolId} />} />
+                                        <Route path="/" element={<RoleBasedRedirect schoolId={schoolId} />} />
                                         <Route path="/super-admin" element={
                                             <ProtectedRoute allowedRoles={['SUPER_ADMIN']}>
                                                 <SuperAdminDashboard onSchoolChange={handleSchoolChange} />
@@ -1129,18 +1141,42 @@ const App = () => {
                                             </ProtectedRoute>
                                         } />
                                         <Route path="/communication" element={
-                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN']}>
                                                 <CommunicationHub />
                                             </ProtectedRoute>
                                         } />
-                                        <Route path="/students" element={<Students schoolId={schoolId} />} />
-                                        <Route path="/bulk-upload" element={<BulkUpload schoolId={schoolId} />} />
-                                        <Route path="/misc-fees" element={<MiscFees schoolId={schoolId} />} />
-                                        <Route path="/scholarships" element={<Scholarships schoolId={schoolId} />} />
-                                        <Route path="/staff" element={<StaffManagement schoolId={schoolId} />} />
-                                        <Route path="/payroll" element={<PayrollConsole schoolId={schoolId} />} />
+                                        <Route path="/students" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN', 'BURSAR']}>
+                                                <Students schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/bulk-upload" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN']}>
+                                                <BulkUpload schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/misc-fees" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN', 'BURSAR']}>
+                                                <MiscFees schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/scholarships" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN']}>
+                                                <Scholarships schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/staff" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN']}>
+                                                <StaffManagement schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
+                                        <Route path="/payroll" element={
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN', 'BURSAR']}>
+                                                <PayrollConsole schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
                                         <Route path="/admin-setup" element={
-                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
+                                            <ProtectedRoute allowedRoles={['SCHOOL_ADMIN']}>
                                                 <AdminSetup schoolId={schoolId} />
                                             </ProtectedRoute>
                                         } />
@@ -1149,8 +1185,11 @@ const App = () => {
                                                 <BranchManagement />
                                             </ProtectedRoute>
                                         } />
-                                        <Route path="/comms-hub" element={<CommunicationHub schoolId={schoolId} />} />
-                                        <Route path="/audit-logs" element={<AuditLogs schoolId={schoolId} />} />
+                                        <Route path="/audit-logs" element={
+                                            <ProtectedRoute allowedRoles={['SUPER_ADMIN', 'SCHOOL_ADMIN']}>
+                                                <AuditLogs schoolId={schoolId} />
+                                            </ProtectedRoute>
+                                        } />
                                         <Route path="*" element={<Navigate to="/" />} />
                                     </Routes>
                                 </main>

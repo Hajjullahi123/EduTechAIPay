@@ -67,15 +67,7 @@
       "main.js",
       "preload.js",
       "package.json",
-      "node_modules/.prisma/**/*",
-      "node_modules/@prisma/client/**/*",
-      "node_modules/express/**/*",
-      "node_modules/cors/**/*",
-      "node_modules/body-parser/**/*",
-      "node_modules/bcryptjs/**/*",
-      "node_modules/jsonwebtoken/**/*",
-      "node_modules/fs-extra/**/*",
-      "node_modules/dotenv/**/*"
+      "public/**/*"
     ],
     "win": {
       "target": "nsis",
