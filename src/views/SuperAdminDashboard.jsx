@@ -21,6 +21,11 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
     const [createdCredentials, setCreatedCredentials] = useState(null);
     const [resetCreds, setResetCreds] = useState(null);
 
+    const [showBranchModal, setShowBranchModal] = useState(false);
+    const [selectedOrgId, setSelectedOrgId] = useState(null);
+    const [branchData, setBranchData] = useState({ name: '', address: '', phone: '', email: '' });
+    const { login } = useAuth();
+
     const loadData = () => {
         setLoading(true);
         Promise.all([
@@ -35,6 +40,47 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
             setLoading(false);
         })
         .catch(() => setLoading(false));
+    };
+
+    const handleImpersonate = async (schoolId) => {
+        try {
+            const res = await fetch(`${API_BASE}/super-admin/impersonate/${schoolId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            // Create a pseudo-user object for the session
+            const impersonatedUser = {
+                ...users.find(u => u.role === 'SUPER_ADMIN'), // Keep super admin base profile
+                role: 'SCHOOL_ADMIN', // Act as school admin
+                schoolId: data.school.id,
+                groupId: data.school.groupId,
+                isImpersonating: true,
+                originalRole: 'SUPER_ADMIN'
+            };
+            
+            login(data.token, impersonatedUser);
+            onSchoolChange(data.school.id);
+            navigate('/'); // Jump to the operational dashboard
+        } catch (err) { alert(err.message); }
+    };
+
+    const handleCreateBranch = async (e) => {
+        e.preventDefault();
+        try {
+            const res = await fetch(`${API_BASE}/super-admin/organizations/${selectedOrgId}/schools`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(branchData)
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            setShowBranchModal(false);
+            setBranchData({ name: '', address: '', phone: '', email: '' });
+            loadData();
+        } catch (err) { alert(err.message); }
     };
 
     useEffect(() => {
@@ -152,44 +198,52 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
                 </div>
                 
                 {activeTab === 'orgs' ? (
-                  <table className="w-full text-left">
-                    <thead>
-                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[2px] border-b border-slate-100 bg-slate-50/30">
-                            <th className="px-8 py-5">Organization Name</th>
-                            <th className="px-8 py-5">Child Nodes (Branches)</th>
-                            <th className="px-8 py-5 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {organizations.map(org => (
-                            <tr key={org.id} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="px-8 py-7">
-                                    <div className="flex items-center gap-5">
-                                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 group-hover:text-primary-600 transition-colors ring-1 ring-inset ring-slate-200">
-                                            <Globe size={24} />
-                                        </div>
-                                        <div>
-                                            <p className="text-md font-bold text-slate-900">{org.name}</p>
-                                            <p className="text-[10px] text-primary-600 font-black uppercase tracking-widest mt-1">Org ID: {org.id}</p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-8 py-7">
-                                    <div className="flex items-center gap-2">
-                                        <div className="px-3 py-1 bg-primary-600/5 border border-primary-600/10 rounded-lg text-primary-600 text-xs font-black">
-                                            {org._count.schools} Branches
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="px-8 py-7 text-right">
-                                    <div className="flex justify-end gap-2">
-                                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Head Master Managed</span>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                  </table>
+                  <div className="divide-y divide-slate-100">
+                      {organizations.map(org => (
+                          <div key={org.id} className="p-8 hover:bg-slate-50/30 transition-all">
+                              <div className="flex items-center justify-between mb-8">
+                                  <div className="flex items-center gap-5">
+                                      <div className="w-14 h-14 rounded-[20px] bg-slate-100 flex items-center justify-center text-slate-400 ring-1 ring-inset ring-slate-200 shadow-sm">
+                                          <Globe size={28} />
+                                      </div>
+                                      <div>
+                                          <p className="text-xl font-black text-slate-900">{org.name}</p>
+                                          <p className="text-[10px] text-primary-600 font-black uppercase tracking-widest mt-1">Managed Organization Node</p>
+                                      </div>
+                                  </div>
+                                  <button 
+                                      onClick={() => { setSelectedOrgId(org.id); setShowBranchModal(true); }}
+                                      className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:border-primary-500 hover:text-primary-600 transition-all shadow-sm"
+                                  >
+                                      <Plus size={14} /> Add Branch
+                                  </button>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ml-14">
+                                  {(org.schools || []).map(school => (
+                                      <div key={school.id} className="p-6 bg-white border border-slate-100 rounded-[28px] hover:border-primary-500/30 transition-all group sophisticated-shadow">
+                                          <div className="flex items-center justify-between mb-4">
+                                              <div className="p-2.5 bg-slate-50 rounded-xl group-hover:bg-primary-50 transition-colors">
+                                                  <Building2 size={18} className="text-slate-400 group-hover:text-primary-600" />
+                                              </div>
+                                              <button 
+                                                  onClick={() => handleImpersonate(school.id)}
+                                                  className="text-[9px] font-black uppercase tracking-[2px] text-primary-600 hover:text-primary-500 transition-colors bg-primary-50 px-3 py-1.5 rounded-lg"
+                                              >
+                                                  Access Node
+                                              </button>
+                                          </div>
+                                          <p className="text-sm font-black text-slate-900 line-clamp-1">{school.name}</p>
+                                          <div className="mt-4 flex items-center justify-between">
+                                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{school._count?.students || 0} Students</p>
+                                              <p className="text-[9px] px-2 py-0.5 bg-slate-100 rounded text-slate-500 font-black uppercase">Active</p>
+                                          </div>
+                                      </div>
+                                  ))}
+                              </div>
+                          </div>
+                      ))}
+                  </div>
                 ) : (
                   <table className="w-full text-left">
                     <thead>
@@ -230,6 +284,35 @@ const SuperAdminDashboard = ({ onSchoolChange }) => {
                   </table>
                 )}
             </div>
+
+            {showBranchModal && (
+                <Modal title="Provision New Branch" onClose={() => setShowBranchModal(false)}>
+                    <form className="space-y-6" onSubmit={handleCreateBranch}>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">School Branch Name</label>
+                            <input required className="input-field" placeholder="Excellence International (Primary)" value={branchData.name} onChange={e => setBranchData({...branchData, name: e.target.value})} />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Office Address</label>
+                            <textarea required className="input-field h-24" placeholder="Full physical address of the branch" value={branchData.address} onChange={e => setBranchData({...branchData, address: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Phone</label>
+                                <input required className="input-field" placeholder="+234..." value={branchData.phone} onChange={e => setBranchData({...branchData, phone: e.target.value})} />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Official Email</label>
+                                <input required className="input-field" type="email" placeholder="branch@school.edu" value={branchData.email} onChange={e => setBranchData({...branchData, email: e.target.value})} />
+                            </div>
+                        </div>
+                        <div className="flex gap-4 pt-4">
+                            <button type="button" onClick={() => setShowBranchModal(false)} className="flex-1 px-8 py-4 bg-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Cancel</button>
+                            <button type="submit" className="btn-primary flex-1 shadow-2xl">Provision Branch</button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
 
             {showOrgModal && (
                 <Modal title="Provision New Organization" onClose={() => setShowOrgModal(false)}>

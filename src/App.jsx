@@ -883,12 +883,14 @@ const Navbar = ({ schoolId, onSchoolChange }) => {
                     <BranchSwitcher currentSchoolId={schoolId} onSwitch={onSchoolChange} />
                  )}
             </div>
-            <div className="flex items-center gap-6 ml-6">
-                <div className="flex flex-col items-end">
-                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1 font-['Outfit']">Active Financial Window</p>
-                    <p className="text-[11px] font-black text-primary-600 px-3 py-1 bg-primary-500/5 border border-primary-500/10 rounded-lg tracking-tighter uppercase font-['Outfit']">{period.session} • {period.term}</p>
+            {user?.role !== 'SUPER_ADMIN' && (
+                <div className="flex items-center gap-6 ml-6">
+                    <div className="flex flex-col items-end">
+                        <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-1 font-['Outfit']">Active Financial Window</p>
+                        <p className="text-[11px] font-black text-primary-600 px-3 py-1 bg-primary-500/5 border border-primary-500/10 rounded-lg tracking-tighter uppercase font-['Outfit']">{period.session} • {period.term}</p>
+                    </div>
                 </div>
-            </div>
+            )}
         </nav>
     )
 }

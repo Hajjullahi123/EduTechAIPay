@@ -309,4 +309,58 @@ router.patch('/academic-periods/terms/:id/activate', authenticate, superAdminOnl
     } catch (error) { res.status(400).json({ error: error.message }); }
 });
 
+// Create a school branch directly
+router.post('/organizations/:groupId/schools', authenticate, superAdminOnly, async (req, res) => {
+    const { groupId } = req.params;
+    const { name, address, phone, email } = req.body;
+    try {
+        const school = await prisma.school.create({
+            data: {
+                name,
+                address,
+                phone,
+                email,
+                groupId: parseInt(groupId)
+            }
+        });
+        res.json(school);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// Impersonate a school/admin (Troubleshooting Protocol)
+router.post('/impersonate/:schoolId', authenticate, superAdminOnly, async (req, res) => {
+    const schoolId = parseInt(req.params.schoolId);
+    const jwt = require('jsonwebtoken');
+    const JWT_SECRET = process.env.JWT_SECRET || 'standalone_secret_123';
+
+    try {
+        const school = await prisma.school.findUnique({
+            where: { id: schoolId },
+            include: { group: true }
+        });
+        
+        if (!school) return res.status(404).json({ error: 'School node not found' });
+
+        // Generate a high-authority token for the specific school environment
+        const token = jwt.sign(
+            { 
+                userId: req.user.userId,
+                role: 'SCHOOL_ADMIN', // Elevate to operational role for troubleshooting
+                groupId: school.groupId,
+                schoolId: school.id,
+                impersonatorId: req.user.userId,
+                isImpersonating: true
+            },
+            JWT_SECRET,
+            { expiresIn: '2h' }
+        );
+
+        res.json({ token, school });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 module.exports = router;
