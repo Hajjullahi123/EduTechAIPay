@@ -858,19 +858,25 @@ const Sidebar = () => {
 }
 
 const Navbar = ({ schoolId, onSchoolChange }) => {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const [period, setPeriod] = useState({ session: '...', term: '...' });
 
     useEffect(() => {
-        if (!schoolId) return;
-        fetch(`${API_BASE}/super-admin/academic-periods?schoolId=${schoolId}`)
+        // Super Admins don't need academic period context in their governance navbar
+        if (!schoolId || user?.role === 'SUPER_ADMIN') return;
+
+        fetch(`${API_BASE}/super-admin/academic-periods?schoolId=${schoolId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
             .then(res => res.json())
             .then(data => {
+                if (!Array.isArray(data)) return;
                 const s = data.find(s => s.isCurrent);
                 const t = s?.terms.find(t => t.isCurrent);
                 setPeriod({ session: s?.name || 'N/A', term: t?.name || 'N/A' });
-            });
-    }, [schoolId]);
+            })
+            .catch(err => console.error('Navbar period fetch error:', err));
+    }, [schoolId, user?.role, token]);
 
     return (
         <nav className="h-20 px-10 flex items-center justify-between glass-navbar z-20">
